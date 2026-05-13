@@ -6,6 +6,9 @@ import { BookingLineItem } from './entities/booking-line-item.entity';
 import { IdempotencyKey } from './entities/idempotency-key.entity';
 import { CancellationPolicy } from './entities/cancellation-policy.entity';
 import { Property } from '../property/entities/property.entity';
+import { Room } from '../property/entities/room.entity';
+import { RoomType } from '../property/entities/room-type.entity';
+import { DailyRate } from '../pricing/entities/daily-rate.entity';
 import { AuditLog } from '../auth/entities/audit-log.entity';
 import { BookingService } from './booking.service';
 import { BookingController } from './booking.controller';
@@ -19,6 +22,9 @@ import { BookingController } from './booking.controller';
       IdempotencyKey,
       CancellationPolicy,
       Property,
+      Room,
+      RoomType,
+      DailyRate,
       AuditLog,
     ]),
   ],

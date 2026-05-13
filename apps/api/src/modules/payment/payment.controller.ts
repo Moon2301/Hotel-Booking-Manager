@@ -31,11 +31,10 @@ export class PaymentController {
     // For this mock, we stringify the parsed body, but in a real app, use rawBody.
     const rawPayload = JSON.stringify(dto); 
     
-    // Disable signature check for local testing if needed, but keeping it structurally correct
-    // const isValid = this.paymentService.verifyWebhookSignature(rawPayload, signature);
-    // if (!isValid) {
-    //   throw new UnauthorizedException('Invalid webhook signature');
-    // }
+    const isValid = this.paymentService.verifyWebhookSignature(rawPayload, signature);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid webhook signature');
+    }
 
     return this.paymentService.handleWebhook(dto, rawPayload);
   }

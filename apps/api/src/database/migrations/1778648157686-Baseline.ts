@@ -1,0 +1,128 @@
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class Baseline1778648157686 implements MigrationInterface {
+    name = 'Baseline1778648157686'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`CREATE TABLE "properties" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying NOT NULL, "iana_timezone" character varying NOT NULL DEFAULT 'UTC', "address" character varying, "phone" character varying, "email" character varying, "hold_ttl_seconds" integer NOT NULL DEFAULT '600', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_2d83bfa0b9fcd45dee1785af44d" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "room_types" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "name" character varying NOT NULL, "base_price" numeric(12,2) NOT NULL DEFAULT '0', "max_occupancy" integer NOT NULL DEFAULT '2', "amenities" jsonb NOT NULL DEFAULT '[]', "description" character varying, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_b6e1d0a9b67d4b9fbff9c35ab69" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."rooms_status_enum" AS ENUM('AVAILABLE', 'RESERVED', 'OCCUPIED', 'CLEANING', 'MAINTENANCE')`);
+        await queryRunner.query(`CREATE TABLE "rooms" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "room_type_id" uuid NOT NULL, "room_number" character varying NOT NULL, "status" "public"."rooms_status_enum" NOT NULL DEFAULT 'AVAILABLE', "floor" integer, "notes" character varying, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_856e24445b9e0b7e35bf1e6390a" UNIQUE ("property_id", "room_number"), CONSTRAINT "PK_0368a2d7c215f2d0458a54933f2" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."users_role_enum" AS ENUM('SUPER_ADMIN', 'PROPERTY_MANAGER', 'FRONT_DESK', 'HOUSEKEEPING', 'FINANCE_READ', 'SUPPORT')`);
+        await queryRunner.query(`CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "email" character varying NOT NULL, "password_hash" character varying NOT NULL, "role" "public"."users_role_enum" NOT NULL DEFAULT 'SUPPORT', "full_name" character varying, "token_version" integer NOT NULL DEFAULT '0', "locked_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_97672ac88f789774dd47f7c8be3" UNIQUE ("email"), CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."bookings_status_enum" AS ENUM('HOLD', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW')`);
+        await queryRunner.query(`CREATE TYPE "public"."bookings_payment_status_enum" AS ENUM('PENDING', 'AUTHORISED', 'PAID', 'REFUNDED', 'FAILED')`);
+        await queryRunner.query(`CREATE TABLE "bookings" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "room_id" uuid, "room_type_id" uuid NOT NULL, "guest_id" uuid NOT NULL, "status" "public"."bookings_status_enum" NOT NULL DEFAULT 'HOLD', "check_in" date NOT NULL, "check_out" date NOT NULL, "policy_snapshot" jsonb, "payment_status" "public"."bookings_payment_status_enum" NOT NULL DEFAULT 'PENDING', "total_amount" numeric(12,2), "currency" character(3) NOT NULL DEFAULT 'VND', "notes" character varying, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_bee6805982cc1e248e94ce94957" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."reviews_status_enum" AS ENUM('PUBLISHED', 'HIDDEN', 'FLAGGED')`);
+        await queryRunner.query(`CREATE TABLE "reviews" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "guest_id" uuid NOT NULL, "property_id" uuid NOT NULL, "rating" smallint NOT NULL, "content" text, "content_hash" character varying, "device_fingerprint" character varying, "status" "public"."reviews_status_enum" NOT NULL DEFAULT 'PUBLISHED', "flagged_reason" character varying, "hidden_reason" character varying, "moderated_by" uuid, "moderated_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_231ae565c273ee700b283f15c1d" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "rate_plans" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "code" character varying NOT NULL, "name" character varying, "currency" character(3) NOT NULL DEFAULT 'VND', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_79f40d230201c6036e1373ec17f" UNIQUE ("property_id", "code"), CONSTRAINT "PK_10dc467a6254264b3b5a7f0c1d6" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."daily_rate_ratesource_enum" AS ENUM('MANUAL', 'RULE', 'IMPORT')`);
+        await queryRunner.query(`CREATE TABLE "daily_rate" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "room_type_id" uuid NOT NULL, "rate_plan_id" uuid, "night" date NOT NULL, "amount" numeric(12,2) NOT NULL, "currency" character(3) NOT NULL DEFAULT 'VND', "tax_included" boolean NOT NULL DEFAULT true, "min_stay" integer NOT NULL DEFAULT '1', "closed_to_arrival" boolean NOT NULL DEFAULT false, "rateSource" "public"."daily_rate_ratesource_enum" NOT NULL DEFAULT 'MANUAL', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_858792f0a0a24b04fac689a4604" UNIQUE ("property_id", "room_type_id", "night", "rate_plan_id"), CONSTRAINT "PK_e61570c7fbd239a42b77d44b5d7" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."payment_events_outcome_enum" AS ENUM('SUCCESS', 'FAILED', 'REFUNDED', 'DISPUTED')`);
+        await queryRunner.query(`CREATE TABLE "payment_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "event_id" character varying NOT NULL, "provider" character varying NOT NULL, "payload_hash" character varying NOT NULL, "outcome" "public"."payment_events_outcome_enum" NOT NULL, "processed_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_4f36a430ea944f1d250f0500d13" UNIQUE ("event_id"), CONSTRAINT "PK_9f1d16fc78b33e676940a32e8b5" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."payment_transactions_status_enum" AS ENUM('PENDING', 'AUTHORISED', 'PAID', 'REFUNDED', 'FAILED')`);
+        await queryRunner.query(`CREATE TABLE "payment_transactions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "provider_ref" character varying, "amount" numeric(12,2) NOT NULL, "currency" character(3) NOT NULL DEFAULT 'VND', "status" "public"."payment_transactions_status_enum" NOT NULL DEFAULT 'PENDING', "event_id" character varying, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_d32b3c6b0d2c1d22604cbcc8c49" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "device_tokens" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "user_id" uuid NOT NULL, "device_id" character varying NOT NULL, "expo_token" character varying NOT NULL, "platform" character varying NOT NULL DEFAULT 'ios', "revoked_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_f11adc06aa35ccaa9caa2f079fc" UNIQUE ("user_id", "device_id"), CONSTRAINT "PK_84700be257607cfb1f9dc2e52c3" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TYPE "public"."chat_threads_status_enum" AS ENUM('OPEN', 'RESOLVED', 'CLOSED')`);
+        await queryRunner.query(`CREATE TABLE "chat_threads" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "booking_id" uuid, "guest_id" uuid NOT NULL, "status" "public"."chat_threads_status_enum" NOT NULL DEFAULT 'OPEN', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_973a81c0adb9b18a5ea3ef95bf8" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "chat_messages" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "thread_id" uuid NOT NULL, "sender_id" uuid NOT NULL, "sender_role" character varying NOT NULL, "content" text NOT NULL, "sent_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_40c55ee0e571e268b0d3cd37d10" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "idempotency_keys" ("key" character varying NOT NULL, "user_id" uuid NOT NULL, "request_hash" character varying NOT NULL, "response_json" jsonb, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_392b1af86f210d98d3f0c764728" PRIMARY KEY ("key", "user_id"))`);
+        await queryRunner.query(`CREATE TABLE "cancellation_policies" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "property_id" uuid NOT NULL, "free_cancel_until_hours_before_checkin" integer NOT NULL DEFAULT '24', "fee_rule_ref" jsonb, "no_show_rule" jsonb, "policy_version" integer NOT NULL DEFAULT '1', "is_active" boolean NOT NULL DEFAULT true, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_325e14a8f8003ef85146eecfc57" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "booking_line_items" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "night" date NOT NULL, "unit_price" numeric(12,2) NOT NULL, "tax_breakdown" jsonb, "rate_plan_code" character varying, "currency" character(3) NOT NULL DEFAULT 'VND', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_586812591b5902a871ecda05fde" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "booking_holds" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid, "room_type_id" uuid NOT NULL, "property_id" uuid NOT NULL, "nights" date array NOT NULL, "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL, "released_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_075c0f15da09267c34bdb721d0b" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "refresh_tokens" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "user_id" uuid NOT NULL, "token_hash" character varying NOT NULL, "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL, "revoked_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_7d8bee0204106019488c4c50ffa" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "audit_logs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "actor_id" character varying, "action" character varying NOT NULL, "entity_type" character varying NOT NULL, "entity_id" character varying, "before" jsonb, "after" jsonb, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_1bb179d048bbc581caa3b013439" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`ALTER TABLE "room_types" ADD CONSTRAINT "FK_256643d841e9459e650f110ae1e" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "rooms" ADD CONSTRAINT "FK_f3a3e21cdec3d9f8069edf6f52f" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "rooms" ADD CONSTRAINT "FK_8a380bdc519b8701daf0ec62da0" FOREIGN KEY ("room_type_id") REFERENCES "room_types"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD CONSTRAINT "FK_afa260d0e51f81520a480817702" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD CONSTRAINT "FK_0b0fc32fe6bd0119e281628df7a" FOREIGN KEY ("room_id") REFERENCES "rooms"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD CONSTRAINT "FK_40f3a4371f8958e374448103eac" FOREIGN KEY ("room_type_id") REFERENCES "room_types"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "bookings" ADD CONSTRAINT "FK_b4403309538387262d97fdf2462" FOREIGN KEY ("guest_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "reviews" ADD CONSTRAINT "FK_bbd6ac6e3e6a8f8c6e0e8692d63" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "reviews" ADD CONSTRAINT "FK_99e07efa0e6f03c2215a193ae85" FOREIGN KEY ("guest_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "reviews" ADD CONSTRAINT "FK_2b1e1cd13649e9315b28b7f2f0c" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "reviews" ADD CONSTRAINT "FK_aa0cc85bea595654ce1ebfd24c3" FOREIGN KEY ("moderated_by") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "rate_plans" ADD CONSTRAINT "FK_f02546db8b7c1c51e6f671cf78d" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" ADD CONSTRAINT "FK_816fddc921df3e9ce5b89f330a6" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" ADD CONSTRAINT "FK_64d629c64e256a93b5861326b7f" FOREIGN KEY ("room_type_id") REFERENCES "room_types"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" ADD CONSTRAINT "FK_6eb55816243165a1ef8a5a1f6b7" FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "payment_transactions" ADD CONSTRAINT "FK_614f93092163be95d794fb4ead1" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "payment_transactions" ADD CONSTRAINT "FK_08121ac6469e8a7aafd062865b7" FOREIGN KEY ("event_id") REFERENCES "payment_events"("event_id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "device_tokens" ADD CONSTRAINT "FK_17e1f528b993c6d55def4cf5bea" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" ADD CONSTRAINT "FK_a61e370661e5e570ee841b38d44" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" ADD CONSTRAINT "FK_50b1ec5ada852bf17fca399796d" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" ADD CONSTRAINT "FK_78ebea3f4b3748431380ad4d3c9" FOREIGN KEY ("guest_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "chat_messages" ADD CONSTRAINT "FK_0b7e57fe586503d477a8d5adaed" FOREIGN KEY ("thread_id") REFERENCES "chat_threads"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "chat_messages" ADD CONSTRAINT "FK_9e5fc47ecb06d4d7b84633b1718" FOREIGN KEY ("sender_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "idempotency_keys" ADD CONSTRAINT "FK_4d2181624ba2d61e76a07175198" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "cancellation_policies" ADD CONSTRAINT "FK_7d1b31e024f4100215fc3b863d6" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "booking_line_items" ADD CONSTRAINT "FK_9ea1cb5b418cfc630fab3bd9ff0" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" ADD CONSTRAINT "FK_8578115a80b567adba380da73f9" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" ADD CONSTRAINT "FK_9fc3eff8e3216b3bd08565c178c" FOREIGN KEY ("room_type_id") REFERENCES "room_types"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" ADD CONSTRAINT "FK_da2526e6dd15cb7e813ce2845d7" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "refresh_tokens" ADD CONSTRAINT "FK_3ddc983c5f7bcf132fd8732c3f4" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`ALTER TABLE "refresh_tokens" DROP CONSTRAINT "FK_3ddc983c5f7bcf132fd8732c3f4"`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" DROP CONSTRAINT "FK_da2526e6dd15cb7e813ce2845d7"`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" DROP CONSTRAINT "FK_9fc3eff8e3216b3bd08565c178c"`);
+        await queryRunner.query(`ALTER TABLE "booking_holds" DROP CONSTRAINT "FK_8578115a80b567adba380da73f9"`);
+        await queryRunner.query(`ALTER TABLE "booking_line_items" DROP CONSTRAINT "FK_9ea1cb5b418cfc630fab3bd9ff0"`);
+        await queryRunner.query(`ALTER TABLE "cancellation_policies" DROP CONSTRAINT "FK_7d1b31e024f4100215fc3b863d6"`);
+        await queryRunner.query(`ALTER TABLE "idempotency_keys" DROP CONSTRAINT "FK_4d2181624ba2d61e76a07175198"`);
+        await queryRunner.query(`ALTER TABLE "chat_messages" DROP CONSTRAINT "FK_9e5fc47ecb06d4d7b84633b1718"`);
+        await queryRunner.query(`ALTER TABLE "chat_messages" DROP CONSTRAINT "FK_0b7e57fe586503d477a8d5adaed"`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" DROP CONSTRAINT "FK_78ebea3f4b3748431380ad4d3c9"`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" DROP CONSTRAINT "FK_50b1ec5ada852bf17fca399796d"`);
+        await queryRunner.query(`ALTER TABLE "chat_threads" DROP CONSTRAINT "FK_a61e370661e5e570ee841b38d44"`);
+        await queryRunner.query(`ALTER TABLE "device_tokens" DROP CONSTRAINT "FK_17e1f528b993c6d55def4cf5bea"`);
+        await queryRunner.query(`ALTER TABLE "payment_transactions" DROP CONSTRAINT "FK_08121ac6469e8a7aafd062865b7"`);
+        await queryRunner.query(`ALTER TABLE "payment_transactions" DROP CONSTRAINT "FK_614f93092163be95d794fb4ead1"`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" DROP CONSTRAINT "FK_6eb55816243165a1ef8a5a1f6b7"`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" DROP CONSTRAINT "FK_64d629c64e256a93b5861326b7f"`);
+        await queryRunner.query(`ALTER TABLE "daily_rate" DROP CONSTRAINT "FK_816fddc921df3e9ce5b89f330a6"`);
+        await queryRunner.query(`ALTER TABLE "rate_plans" DROP CONSTRAINT "FK_f02546db8b7c1c51e6f671cf78d"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "FK_aa0cc85bea595654ce1ebfd24c3"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "FK_2b1e1cd13649e9315b28b7f2f0c"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "FK_99e07efa0e6f03c2215a193ae85"`);
+        await queryRunner.query(`ALTER TABLE "reviews" DROP CONSTRAINT "FK_bbd6ac6e3e6a8f8c6e0e8692d63"`);
+        await queryRunner.query(`ALTER TABLE "bookings" DROP CONSTRAINT "FK_b4403309538387262d97fdf2462"`);
+        await queryRunner.query(`ALTER TABLE "bookings" DROP CONSTRAINT "FK_40f3a4371f8958e374448103eac"`);
+        await queryRunner.query(`ALTER TABLE "bookings" DROP CONSTRAINT "FK_0b0fc32fe6bd0119e281628df7a"`);
+        await queryRunner.query(`ALTER TABLE "bookings" DROP CONSTRAINT "FK_afa260d0e51f81520a480817702"`);
+        await queryRunner.query(`ALTER TABLE "rooms" DROP CONSTRAINT "FK_8a380bdc519b8701daf0ec62da0"`);
+        await queryRunner.query(`ALTER TABLE "rooms" DROP CONSTRAINT "FK_f3a3e21cdec3d9f8069edf6f52f"`);
+        await queryRunner.query(`ALTER TABLE "room_types" DROP CONSTRAINT "FK_256643d841e9459e650f110ae1e"`);
+        await queryRunner.query(`DROP TABLE "audit_logs"`);
+        await queryRunner.query(`DROP TABLE "refresh_tokens"`);
+        await queryRunner.query(`DROP TABLE "booking_holds"`);
+        await queryRunner.query(`DROP TABLE "booking_line_items"`);
+        await queryRunner.query(`DROP TABLE "cancellation_policies"`);
+        await queryRunner.query(`DROP TABLE "idempotency_keys"`);
+        await queryRunner.query(`DROP TABLE "chat_messages"`);
+        await queryRunner.query(`DROP TABLE "chat_threads"`);
+        await queryRunner.query(`DROP TYPE "public"."chat_threads_status_enum"`);
+        await queryRunner.query(`DROP TABLE "device_tokens"`);
+        await queryRunner.query(`DROP TABLE "payment_transactions"`);
+        await queryRunner.query(`DROP TYPE "public"."payment_transactions_status_enum"`);
+        await queryRunner.query(`DROP TABLE "payment_events"`);
+        await queryRunner.query(`DROP TYPE "public"."payment_events_outcome_enum"`);
+        await queryRunner.query(`DROP TABLE "daily_rate"`);
+        await queryRunner.query(`DROP TYPE "public"."daily_rate_ratesource_enum"`);
+        await queryRunner.query(`DROP TABLE "rate_plans"`);
+        await queryRunner.query(`DROP TABLE "reviews"`);
+        await queryRunner.query(`DROP TYPE "public"."reviews_status_enum"`);
+        await queryRunner.query(`DROP TABLE "bookings"`);
+        await queryRunner.query(`DROP TYPE "public"."bookings_payment_status_enum"`);
+        await queryRunner.query(`DROP TYPE "public"."bookings_status_enum"`);
+        await queryRunner.query(`DROP TABLE "users"`);
+        await queryRunner.query(`DROP TYPE "public"."users_role_enum"`);
+        await queryRunner.query(`DROP TABLE "rooms"`);
+        await queryRunner.query(`DROP TYPE "public"."rooms_status_enum"`);
+        await queryRunner.query(`DROP TABLE "room_types"`);
+        await queryRunner.query(`DROP TABLE "properties"`);
+    }
+
+}

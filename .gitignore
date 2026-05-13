@@ -1,6 +1,12 @@
 # Dependency directories
 node_modules/
 jspm_packages/
+venv/
+.venv/
+env/
+virtualenv/
+__pycache__/
+*.py[cod]
 
 # Build outputs
 dist/
@@ -48,3 +54,4 @@ ts_errors.txt
 ts_errors2.txt
 seed_error.txt
 api_documentation_for_frontend.md
+node_modules

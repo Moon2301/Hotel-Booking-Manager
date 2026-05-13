@@ -1,0 +1,30 @@
+# AI Ignore File (for Cursor and other AI tools)
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+env/
+virtualenv/
+__pycache__/
+
+# Build outputs
+dist/
+build/
+.turbo/
+out/
+
+# Version control
+.git/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Large files or logs
+*.log
+tmp/
+temp/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json

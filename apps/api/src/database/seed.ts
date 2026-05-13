@@ -25,7 +25,7 @@ export const seedData = async (dataSource: DataSource) => {
       email: 'guest@example.com',
       passwordHash,
       fullName: 'John Doe',
-      role: UserRole.SUPPORT, // For testing flow, guest is just a user
+      role: UserRole.SUPPORT,
     });
 
     await queryRunner.manager.save([admin, guest]);
@@ -35,6 +35,7 @@ export const seedData = async (dataSource: DataSource) => {
       name: 'Grand Luxury Resort',
       address: '123 Vo Nguyen Giap, Da Nang',
       ianaTimezone: 'Asia/Ho_Chi_Minh',
+      holdTtlSeconds: 600,
     });
     await queryRunner.manager.save(property);
 
@@ -43,7 +44,7 @@ export const seedData = async (dataSource: DataSource) => {
       propertyId: property.id,
       name: 'Deluxe Sea View',
       basePrice: 2000000,
-      capacity: 2,
+      maxOccupancy: 2,
     });
     await queryRunner.manager.save(deluxeRoom);
 
@@ -57,7 +58,7 @@ export const seedData = async (dataSource: DataSource) => {
     await queryRunner.manager.save(room101);
 
     await queryRunner.commitTransaction();
-    console.log('✅ Seeding completed successfully');
+    console.log('✅ Seeding completed successfully with corrected entity fields');
   } catch (err) {
     await queryRunner.rollbackTransaction();
     console.error('❌ Seeding failed', err);

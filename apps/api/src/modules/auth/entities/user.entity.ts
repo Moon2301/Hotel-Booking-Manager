@@ -29,6 +29,9 @@ export class User {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.SUPPORT })
   role: UserRole;
 
+  @Column({ name: 'full_name', nullable: true })
+  fullName: string;
+
   @Column({ name: 'token_version', default: 0 })
   tokenVersion: number;
 

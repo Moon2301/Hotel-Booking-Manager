@@ -6,12 +6,14 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { UseGuards, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto/chat.dto';
-// A real app would have a WsJwtAuthGuard here instead of the REST JwtAuthGuard
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -23,12 +25,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   
   private readonly logger = new Logger(ChatGateway.name);
 
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly jwtService: JwtService,
+    private readonly config: ConfigService,
+  ) {}
 
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
-    // Real app: Extract JWT from handshake, verify, and join property-specific rooms
-    // const token = client.handshake.auth.token;
+  async handleConnection(client: Socket) {
+    try {
+      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
+      if (!token) {
+        throw new WsException('Unauthorized: No token provided');
+      }
+
+      const payload = await this.jwtService.verifyAsync(token, {
+        secret: this.config.get<string>('jwt.accessSecret'),
+      });
+
+      // Attach user to client for later use
+      client.data.user = payload;
+      this.logger.log(`Client connected and verified: ${client.id} (User: ${payload.sub})`);
+    } catch (error) {
+      this.logger.error(`Connection rejected: ${error.message}`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
@@ -37,6 +57,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join_property')
   handleJoinProperty(@MessageBody() propertyId: string, @ConnectedSocket() client: Socket) {
+    // Only allow joining if authorized
+    if (!client.data.user) throw new WsException('Unauthorized');
+    
     client.join(`property_${propertyId}`);
     this.logger.log(`Client ${client.id} joined property_${propertyId}`);
     return { event: 'joined', propertyId };
@@ -47,18 +70,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() dto: SendMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
-    // Fake sender ID for mock - real app extracts from JWT verified during connection
-    const senderId = client.handshake.auth.userId || 'mock-user-id'; 
+    if (!client.data.user) throw new WsException('Unauthorized');
+    const senderId = client.data.user.sub;
     
     try {
       const message = await this.chatService.saveMessage(dto, senderId);
-      
-      // Emit to the specific thread
       this.server.to(`thread_${dto.threadId}`).emit('new_message', message);
-      
-      // If we joined a property room, emit there too for staff
-      // this.server.to(`property_${propertyId}`).emit('new_property_message', message);
-      
       return { event: 'message_sent', data: message };
     } catch (error) {
       this.logger.error(`Error sending message: ${error.message}`);
@@ -68,6 +85,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join_thread')
   handleJoinThread(@MessageBody() threadId: string, @ConnectedSocket() client: Socket) {
+    if (!client.data.user) throw new WsException('Unauthorized');
     client.join(`thread_${threadId}`);
     this.logger.log(`Client ${client.id} joined thread_${threadId}`);
     return { event: 'joined', threadId };

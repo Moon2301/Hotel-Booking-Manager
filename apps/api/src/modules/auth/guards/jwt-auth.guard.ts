@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { UseGuards, applyDecorators, Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '../entities/user.entity';
@@ -30,15 +30,17 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest();
+    const { user } = request;
+    
     return requiredRoles.some((role) => user?.role === role);
   }
 }
 
 /** Convenience decorator combining JWT + Roles */
 export function Auth(...roles: UserRole[]) {
-  return function (target: any, key?: string, descriptor?: any) {
-    Roles(...roles)(target, key, descriptor);
-    return descriptor ?? target;
-  };
+  return applyDecorators(
+    Roles(...roles),
+    UseGuards(JwtAuthGuard, RolesGuard),
+  );
 }

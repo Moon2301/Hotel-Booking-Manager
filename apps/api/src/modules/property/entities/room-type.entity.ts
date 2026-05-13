@@ -12,6 +12,7 @@ export class RoomType {
   @JoinColumn({ name: 'property_id' })
   property: Property;
   @Column() name: string;
+  @Column({ type: 'numeric', precision: 12, scale: 2, name: 'base_price', default: 0 }) basePrice: number;
   @Column({ name: 'max_occupancy', default: 2 }) maxOccupancy: number;
   @Column({ type: 'jsonb', default: [] }) amenities: string[];
   @Column({ nullable: true }) description: string;
