@@ -48,10 +48,17 @@ export class ReviewService {
     return this.reviewRepo.save(review);
   }
 
-  async getReviews(propertyId: string, status?: ReviewStatus) {
-    const where: any = { propertyId };
-    if (status) where.status = status;
-    return this.reviewRepo.find({ where, order: { createdAt: 'DESC' } });
+  async getReviews(propertyId: string, status?: ReviewStatus, page = 1, limit = 20) {
+    const qb = this.reviewRepo.createQueryBuilder('review');
+    if (propertyId) qb.andWhere('review.propertyId = :propertyId', { propertyId });
+    if (status) qb.andWhere('review.status = :status', { status });
+
+    qb.orderBy('review.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async moderateReview(id: string, dto: ModerateReviewDto, actorId: string) {

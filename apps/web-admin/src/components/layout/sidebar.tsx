@@ -15,6 +15,9 @@ import {
   ScrollText,
   PanelLeftClose,
   PanelLeft,
+  ClipboardList,
+  Receipt,
+  UserSquare2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -33,7 +36,10 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Properties', href: '/properties', icon: Building2, permission: 'properties:read' },
   { label: 'Room Board', href: '/room-board', icon: BedDouble, permission: 'rooms:status' },
   { label: 'Bookings', href: '/bookings', icon: CalendarCheck, permission: 'bookings:read' },
+  { label: 'Tasks', href: '/tasks', icon: ClipboardList, permission: 'tasks:read' },
+  { label: 'Invoices', href: '/invoices', icon: Receipt, permission: 'invoices:read' },
   { label: 'Payments', href: '/payments', icon: CreditCard, permission: 'payments:read' },
+  { label: 'Guests', href: '/guests', icon: UserSquare2, permission: 'guests:read' },
   { label: 'Reviews', href: '/reviews', icon: Star, permission: 'reviews:read' },
   { label: 'Chat', href: '/chat', icon: MessageSquare, permission: 'chat:read' },
   { label: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports:read' },

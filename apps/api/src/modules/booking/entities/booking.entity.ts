@@ -1,11 +1,13 @@
 import {
   Entity, PrimaryGeneratedColumn, Column,
-  ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn,
+  ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn,
 } from 'typeorm';
 import { Property } from '../../property/entities/property.entity';
 import { Room } from '../../property/entities/room.entity';
 import { RoomType } from '../../property/entities/room-type.entity';
-import { User } from '../../auth/entities/user.entity';
+import { Guest } from '../../guest/entities/guest.entity';
+import { Invoice } from './invoice.entity';
+import { Task } from '../../task/entities/task.entity';
 
 export enum BookingStatus {
   HOLD = 'HOLD',
@@ -16,13 +18,8 @@ export enum BookingStatus {
   NO_SHOW = 'NO_SHOW',
 }
 
-export enum PaymentStatus {
-  PENDING = 'PENDING',
-  AUTHORISED = 'AUTHORISED',
-  PAID = 'PAID',
-  REFUNDED = 'REFUNDED',
-  FAILED = 'FAILED',
-}
+import { PaymentStatus } from './invoice.entity';
+export { PaymentStatus };
 
 @Entity('bookings')
 export class Booking {
@@ -44,9 +41,15 @@ export class Booking {
   roomType: RoomType;
 
   @Column({ name: 'guest_id' }) guestId: string;
-  @ManyToOne(() => User)
+  @ManyToOne(() => Guest)
   @JoinColumn({ name: 'guest_id' })
-  guest: User;
+  guest: Guest;
+
+  @OneToMany(() => Invoice, (invoice) => invoice.booking)
+  invoices: Invoice[];
+
+  @OneToMany(() => Task, (task) => task.booking)
+  tasks: Task[];
 
   @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.HOLD }) status: BookingStatus;
   
@@ -61,7 +64,17 @@ export class Booking {
   @Column({ type: 'char', length: 3, default: 'VND' }) currency: string;
   
   @Column({ nullable: true }) notes: string;
-  
+
+  // ─── Digital Check-in (QR / PIN) ──────────────────────────────────────────
+  @Column({ name: 'checkin_token', nullable: true, unique: true })
+  checkinToken: string;
+
+  @Column({ name: 'checkin_pin', nullable: true, length: 60 })
+  checkinPin: string; // bcrypt hash of 6-digit PIN
+
+  @Column({ name: 'checkin_token_expires_at', type: 'timestamptz', nullable: true })
+  checkinTokenExpiresAt: Date;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt: Date;
 }

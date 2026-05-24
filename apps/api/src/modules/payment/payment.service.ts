@@ -7,6 +7,7 @@ import { PaymentEvent, PaymentOutcome } from './entities/payment-event.entity';
 import { PaymentTransaction } from './entities/payment-transaction.entity';
 import { Booking, PaymentStatus } from '../booking/entities/booking.entity';
 import { CreatePaymentIntentDto, PaymentWebhookDto, WebhookProvider } from './dto/payment.dto';
+import { AuditLog } from '../auth/entities/audit-log.entity';
 
 @Injectable()
 export class PaymentService {
@@ -24,14 +25,12 @@ export class PaymentService {
     const booking = await this.bookingRepo.findOne({ where: { id: dto.bookingId } });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    // Here we would integrate with Stripe/VNPay/MoMo to create an intent
-    // For MVP, we mock the creation and return a dummy client secret
-    
     const tx = this.txRepo.create({
       bookingId: dto.bookingId,
       amount: dto.amount,
       currency: 'VND',
       providerRef: `mock_intent_${Date.now()}`,
+      status: PaymentStatus.PENDING,
     });
     
     await this.txRepo.save(tx);
@@ -39,6 +38,50 @@ export class PaymentService {
     return {
       clientSecret: 'mock_client_secret',
       transactionId: tx.id,
+    };
+  }
+
+  async getPayments(bookingId?: string): Promise<PaymentTransaction[]> {
+    const where: any = {};
+    if (bookingId) where.bookingId = bookingId;
+    return this.txRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async refundPayment(id: string, actorId: string) {
+    const tx = await this.txRepo.findOne({ where: { id } });
+    if (!tx) throw new NotFoundException('Transaction not found');
+    if (tx.status !== PaymentStatus.PAID) {
+      throw new BadRequestException('Can only refund PAID transactions');
+    }
+
+    const booking = await this.bookingRepo.findOne({ where: { id: tx.bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const beforeStatus = tx.status;
+    tx.status = PaymentStatus.REFUNDED;
+    await this.txRepo.save(tx);
+
+    booking.paymentStatus = PaymentStatus.REFUNDED;
+    await this.bookingRepo.save(booking);
+
+    // Save audit log
+    await this.dataSource.getRepository(AuditLog).save(
+      this.dataSource.getRepository(AuditLog).create({
+        actorId,
+        action: 'payment.refund',
+        entityType: 'payment_transactions',
+        entityId: id,
+        before: { status: beforeStatus },
+        after: { status: PaymentStatus.REFUNDED },
+      })
+    );
+
+    return {
+      success: true,
+      transaction: tx,
     };
   }
 
@@ -51,13 +94,12 @@ export class PaymentService {
   }
 
   async handleWebhook(dto: PaymentWebhookDto, rawPayload: string) {
-    // 1. Check idempotency of the event
     const payloadHash = crypto.createHash('sha256').update(rawPayload).digest('hex');
     const existingEvent = await this.eventRepo.findOne({ where: { eventId: dto.eventId } });
     
     if (existingEvent) {
       this.logger.log(`Webhook event ${dto.eventId} already processed.`);
-      return { success: true, duplicate: true }; // No-op, return 200
+      return { success: true, duplicate: true };
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -65,7 +107,6 @@ export class PaymentService {
     await queryRunner.startTransaction();
 
     try {
-      // 2. Insert event first
       const outcome = dto.status === 'SUCCESS' ? PaymentOutcome.SUCCESS : PaymentOutcome.FAILED;
       const event = queryRunner.manager.create(PaymentEvent, {
         eventId: dto.eventId,
@@ -75,14 +116,25 @@ export class PaymentService {
       });
       await queryRunner.manager.save(event);
 
-      // 3. Update Transaction and Booking
       const booking = await queryRunner.manager.findOne(Booking, { where: { id: dto.bookingId } });
       if (booking) {
         if (outcome === PaymentOutcome.SUCCESS) {
           booking.paymentStatus = PaymentStatus.PAID;
-          // In a real system, we also update the transaction table with the provider reference here
+          
+          // Also update transaction status to PAID
+          await queryRunner.manager.update(
+            PaymentTransaction,
+            { bookingId: dto.bookingId, status: PaymentStatus.PENDING },
+            { status: PaymentStatus.PAID, eventId: dto.eventId }
+          );
         } else {
           booking.paymentStatus = PaymentStatus.FAILED;
+          
+          await queryRunner.manager.update(
+            PaymentTransaction,
+            { bookingId: dto.bookingId, status: PaymentStatus.PENDING },
+            { status: PaymentStatus.FAILED, eventId: dto.eventId }
+          );
         }
         await queryRunner.manager.save(booking);
       }

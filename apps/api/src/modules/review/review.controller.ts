@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Body, Param, Patch, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsInt, IsUUID, Min, Max } from 'class-validator';
 import { Request } from 'express';
 import { ReviewService } from './review.service';
 import { CreateReviewDto, ModerateReviewDto } from './dto/review.dto';
@@ -22,13 +24,22 @@ export class ReviewController {
 
   @Get()
   @ApiOperation({ summary: 'List reviews for a property' })
-  @ApiQuery({ name: 'property_id', required: true })
+  @ApiQuery({ name: 'propertyId', required: false })
   @ApiQuery({ name: 'status', enum: ReviewStatus, required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   getReviews(
-    @Query('property_id') propertyId: string,
+    @Query('propertyId') propertyId: string,
     @Query('status') status?: ReviewStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.reviewService.getReviews(propertyId, status);
+    return this.reviewService.getReviews(
+      propertyId,
+      status,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 20,
+    );
   }
 
   @Patch(':id/moderate')

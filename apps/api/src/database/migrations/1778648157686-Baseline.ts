@@ -62,9 +62,18 @@ export class Baseline1778648157686 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "booking_holds" ADD CONSTRAINT "FK_9fc3eff8e3216b3bd08565c178c" FOREIGN KEY ("room_type_id") REFERENCES "room_types"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "booking_holds" ADD CONSTRAINT "FK_da2526e6dd15cb7e813ce2845d7" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "refresh_tokens" ADD CONSTRAINT "FK_3ddc983c5f7bcf132fd8732c3f4" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        
+        await queryRunner.query(`CREATE TYPE "public"."invoices_payment_status_enum" AS ENUM('PENDING', 'AUTHORISED', 'PAID', 'REFUNDED', 'FAILED')`);
+        await queryRunner.query(`CREATE TYPE "public"."invoices_payment_method_enum" AS ENUM('CASH', 'CARD', 'VNPAY')`);
+        await queryRunner.query(`CREATE TABLE "invoices" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "booking_id" uuid NOT NULL, "total_amount" numeric(12,2) NOT NULL, "payment_status" "public"."invoices_payment_status_enum" NOT NULL DEFAULT 'PENDING', "payment_method" "public"."invoices_payment_method_enum", "vnpay_transaction_id" character varying, "issued_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "paid_at" TIMESTAMP WITH TIME ZONE, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_invoices" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`ALTER TABLE "invoices" ADD CONSTRAINT "FK_invoices_booking" FOREIGN KEY ("booking_id") REFERENCES "bookings"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`ALTER TABLE "invoices" DROP CONSTRAINT "FK_invoices_booking"`);
+        await queryRunner.query(`DROP TABLE "invoices"`);
+        await queryRunner.query(`DROP TYPE "public"."invoices_payment_method_enum"`);
+        await queryRunner.query(`DROP TYPE "public"."invoices_payment_status_enum"`);
         await queryRunner.query(`ALTER TABLE "refresh_tokens" DROP CONSTRAINT "FK_3ddc983c5f7bcf132fd8732c3f4"`);
         await queryRunner.query(`ALTER TABLE "booking_holds" DROP CONSTRAINT "FK_da2526e6dd15cb7e813ce2845d7"`);
         await queryRunner.query(`ALTER TABLE "booking_holds" DROP CONSTRAINT "FK_9fc3eff8e3216b3bd08565c178c"`);

@@ -1,14 +1,31 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Controller, Post, Body, Headers, UnauthorizedException, UseGuards, Req, HttpCode, HttpStatus, Get, Param, Query, Res } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader, ApiQuery } from '@nestjs/swagger';
+import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
+import { VnpayService } from './vnpay.service';
+import { InvoiceService } from '../booking/invoice.service';
+import { ReconciliationService } from './reconciliation.service';
 import { CreatePaymentIntentDto, PaymentWebhookDto } from './dto/payment.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard, Auth } from '../auth/guards/jwt-auth.guard';
+import { UserRole } from '../auth/entities/user.entity';
 
 @ApiTags('Payments')
 @Controller()
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly vnpayService: VnpayService,
+    private readonly invoiceService: InvoiceService,
+    private readonly reconciliationService: ReconciliationService,
+  ) {}
+
+  @Get('reconciliation-tickets')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.FINANCE_READ)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get payment reconciliation tickets' })
+  getReconciliationTickets(@Query('propertyId') propertyId?: string) {
+    return this.reconciliationService.getTickets(propertyId);
+  }
 
   @Post('payments/intent')
   @UseGuards(JwtAuthGuard)
@@ -16,6 +33,26 @@ export class PaymentController {
   @ApiOperation({ summary: 'Create a payment intent' })
   createIntent(@Body() dto: CreatePaymentIntentDto) {
     return this.paymentService.createIntent(dto);
+  }
+
+  @Get('payments')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER, UserRole.FINANCE_READ)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get payment transactions history' })
+  @ApiQuery({ name: 'bookingId', required: false })
+  getPayments(@Query('bookingId') bookingId?: string) {
+    return this.paymentService.getPayments(bookingId);
+  }
+
+  @Post('payments/:id/refund')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Initiate a mock refund for a transaction' })
+  refundPayment(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.paymentService.refundPayment(id, req.user.id);
   }
 
   @Post('webhooks/payment')
@@ -27,8 +64,6 @@ export class PaymentController {
     @Body() dto: PaymentWebhookDto,
     @Req() req: Request,
   ) {
-    // In NestJS, getting the raw body string requires raw body parsing middleware.
-    // For this mock, we stringify the parsed body, but in a real app, use rawBody.
     const rawPayload = JSON.stringify(dto); 
     
     const isValid = this.paymentService.verifyWebhookSignature(rawPayload, signature);
@@ -37,5 +72,49 @@ export class PaymentController {
     }
 
     return this.paymentService.handleWebhook(dto, rawPayload);
+  }
+
+  // ─── VNPay ────────────────────────────────────────────────────────────────
+
+  @Post('payment/vnpay/create-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create VNPay payment URL for an invoice' })
+  async createVnpayUrl(
+    @Body() body: { invoiceId: string },
+    @Req() req: Request,
+  ) {
+    const invoice = await this.invoiceService.getInvoice(body.invoiceId);
+    const ipAddr = req.ip || req.headers['x-forwarded-for'] as string || '127.0.0.1';
+    const paymentUrl = this.vnpayService.createPaymentUrl(
+      invoice.id,
+      Number(invoice.totalAmount),
+      ipAddr,
+    );
+    return { paymentUrl };
+  }
+
+  @Get('payment/vnpay/vnpay-return')
+  @ApiOperation({ summary: 'VNPay payment callback/return handler' })
+  async vnpayReturn(
+    @Query() query: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const result = this.vnpayService.verifyCallback(query);
+    const clientUrl = this.vnpayService.getClientUrl();
+
+    if (!result.isValid) {
+      return res.redirect(`${clientUrl}/my-stay?payment=error&reason=invalid_signature`);
+    }
+
+    if (!result.isSuccess) {
+      return res.redirect(`${clientUrl}/my-stay?payment=failed`);
+    }
+
+    try {
+      await this.invoiceService.confirmVnpayPayment(result.invoiceId, result.vnpayTransactionId);
+      return res.redirect(`${clientUrl}/my-stay?payment=success`);
+    } catch (err) {
+      return res.redirect(`${clientUrl}/my-stay?payment=error&reason=server_error`);
+    }
   }
 }

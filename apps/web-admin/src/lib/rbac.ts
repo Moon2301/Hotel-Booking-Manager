@@ -27,7 +27,12 @@ export type Permission =
   | 'reports:export'
   | 'users:read'
   | 'users:write'
-  | 'audit:read';
+  | 'audit:read'
+  | 'tasks:read'
+  | 'tasks:write'
+  | 'invoices:read'
+  | 'invoices:write'
+  | 'guests:read';
 
 /**
  * All possible permissions as an array (useful for iteration/testing).
@@ -57,6 +62,11 @@ export const ALL_PERMISSIONS: Permission[] = [
   'users:read',
   'users:write',
   'audit:read',
+  'tasks:read',
+  'tasks:write',
+  'invoices:read',
+  'invoices:write',
+  'guests:read',
 ];
 
 /**
@@ -85,6 +95,11 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'reviews:moderate',
     'reports:read',
     'reports:export',
+    'tasks:read',
+    'tasks:write',
+    'invoices:read',
+    'invoices:write',
+    'guests:read',
   ],
 
   [UserRole.FRONT_DESK]: [
@@ -97,17 +112,25 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'bookings:checkin',
     'chat:read',
     'chat:write',
+    'tasks:read',
+    'tasks:write',
+    'invoices:read',
+    'invoices:write',
+    'guests:read',
   ],
 
   [UserRole.HOUSEKEEPING]: [
     'rooms:read',
     'rooms:status',
+    'tasks:read',
+    'tasks:write',
   ],
 
   [UserRole.FINANCE_READ]: [
     'payments:read',
     'reports:read',
     'reports:export',
+    'invoices:read',
   ],
 
   [UserRole.SUPPORT]: [
@@ -115,6 +138,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'reviews:moderate',
     'chat:read',
     'chat:write',
+    'tasks:read',
+    'tasks:write',
   ],
 };
 
@@ -138,6 +163,9 @@ export const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; permission: Permissi
   { pattern: /^\/reports/, permission: 'reports:read' },
   { pattern: /^\/users/, permission: 'users:read' },
   { pattern: /^\/audit-log/, permission: 'audit:read' },
+  { pattern: /^\/tasks/, permission: 'tasks:read' },
+  { pattern: /^\/invoices/, permission: 'invoices:read' },
+  { pattern: /^\/guests/, permission: 'guests:read' },
 ];
 
 /**

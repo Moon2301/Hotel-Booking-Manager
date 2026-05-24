@@ -13,6 +13,8 @@ import { PaymentModule } from './modules/payment/payment.module';
 import { ReviewModule } from './modules/review/review.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { GuestModule } from './modules/guest/guest.module';
+import { TaskModule } from './modules/task/task.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -21,7 +23,7 @@ import appConfig from './config/app.config';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig],
-      envFilePath: ['.env'],
+      envFilePath: ['.env', '../../.env'],
     }),
 
     // ─── Rate Limiting ─────────────────────────────────────────────────────
@@ -50,13 +52,16 @@ import appConfig from './config/app.config';
 
     // ─── Domain Modules ────────────────────────────────────────────────────
     AuthModule,
+    GuestModule,
     PropertyModule,
     PricingModule,
     BookingModule,
     PaymentModule,
     ReviewModule,
+    TaskModule,
     NotificationModule,
     ChatModule,
   ],
 })
 export class AppModule {}
+

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${API_INTERNAL_URL}/auth/refresh`, {
+    const response = await fetch(`${API_INTERNAL_URL}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),

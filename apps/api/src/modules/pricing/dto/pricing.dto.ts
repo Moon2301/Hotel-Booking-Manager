@@ -1,6 +1,6 @@
-import { IsString, IsNumber, IsBoolean, IsDateString, IsOptional, ValidateNested, IsArray, Min } from 'class-validator';
+import { IsString, IsNumber, IsBoolean, IsDateString, IsOptional, ValidateNested, IsArray, Min, IsNotEmpty, Length } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class DailyRateDto {
   @ApiProperty()
@@ -44,4 +44,35 @@ export class BulkUpdateRatesDto {
   @ValidateNested({ each: true })
   @Type(() => DailyRateDto)
   rates: DailyRateDto[];
+}
+
+export class CreateRatePlanDto {
+  @ApiProperty({ example: 'standard' })
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+
+  @ApiPropertyOptional({ example: 'Standard Rate' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'VND', default: 'VND' })
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  currency?: string;
+}
+
+export class UpdateRatePlanDto {
+  @ApiPropertyOptional({ example: 'Standard Rate Plan' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'USD' })
+  @IsOptional()
+  @IsString()
+  @Length(3, 3)
+  currency?: string;
 }

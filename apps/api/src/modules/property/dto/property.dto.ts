@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsInt, Min, IsArray, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, IsArray, IsEnum, IsNumber } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ApiProperty } from '@nestjs/swagger';
 import { RoomStatus } from '../entities/room.entity';
 
@@ -26,6 +27,68 @@ export class CreatePropertyDto {
   @IsString()
   @IsOptional()
   email?: string;
+}
+
+export class UpdatePropertyDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ianaTimezone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Hold TTL in seconds' })
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  holdTtlSeconds?: number;
+}
+
+export class UpdateRoomTypeDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxOccupancy?: number;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  amenities?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  basePrice?: number;
 }
 
 export class CreateRoomTypeDto {

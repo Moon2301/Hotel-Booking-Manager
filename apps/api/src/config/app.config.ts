@@ -39,4 +39,19 @@ export default () => ({
   cors: {
     origins: (process.env.CORS_ORIGINS || 'http://localhost:3001').split(','),
   },
+
+  mail: {
+    host: process.env.MAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.MAIL_PORT || '587', 10),
+    secure: process.env.MAIL_SECURE === 'true',
+    user: process.env.MAIL_USER || '',
+    pass: process.env.MAIL_PASS || '',
+  },
+
+  vnpay: {
+    tmnCode: process.env.VNP_TMNCODE || 'R4923J2J',
+    hashSecret: process.env.VNP_HASHSECRET || 'P68JKLG8376RKRTBPWCKDD7XR3OYF4TZ',
+    paymentUrl: process.env.VNP_PAYMENT_URL || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+    returnUrl: process.env.VNP_RETURN_URL || 'http://localhost:8080/my-stay?payment=',
+  },
 });
