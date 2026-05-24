@@ -21,6 +21,7 @@ import {
 
 import { useTasks, useUpdateTask, taskKeys } from '@/hooks/queries/use-tasks';
 import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
 import { TaskStatus, TaskType } from '@/types';
 import type { Task } from '@/types';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,7 @@ const typeMap: Record<TaskType, { label: string; color: string; icon: any }> = {
 export default function TasksPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
   
   const { data: tasks = [], isLoading, isError, error } = useTasks();
   const updateTaskMutation = useUpdateTask();
@@ -55,6 +57,13 @@ export default function TasksPage() {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [staffReport, setStaffReport] = useState('');
+
+  // Request native notification permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Socket Connection for Real-Time notifications
   useEffect(() => {
@@ -85,7 +94,21 @@ export default function TasksPage() {
           
           if (data.event === 'created') {
             const taskLabel = typeMap[data.task.type]?.label || data.task.type;
-            alert(`🔔 Yêu cầu mới: [${taskLabel}] vừa được gửi từ phòng ${data.task.booking?.room?.roomNumber || '—'}`);
+            const roomNum = data.task.booking?.room?.roomNumber || '—';
+            const title = `Phòng ${roomNum}: Yêu cầu ${taskLabel}`;
+            const body = `Khách hàng vừa gửi một yêu cầu dịch vụ mới.`;
+
+            // Shadcn Toast
+            toast({
+              title,
+              description: body,
+              variant: 'default',
+            });
+
+            // Native push notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(title, { body });
+            }
           }
         });
       } catch (err) {
@@ -98,7 +121,7 @@ export default function TasksPage() {
     return () => {
       if (socket) socket.disconnect();
     };
-  }, [queryClient]);
+  }, [queryClient, toast]);
 
   const handleClaim = (taskId: string) => {
     if (!user) return;

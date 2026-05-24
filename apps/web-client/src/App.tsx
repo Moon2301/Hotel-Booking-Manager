@@ -275,6 +275,30 @@ function MyStay() {
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceSuccess, setServiceSuccess] = useState(false);
 
+  // Notifications State
+  interface ToastMsg {
+    id: number;
+    title: string;
+    message: string;
+    type: 'info' | 'success';
+  }
+  const [toasts, setToasts] = useState<ToastMsg[]>([]);
+
+  const addToast = (title: string, message: string, type: 'info' | 'success' = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  };
+
+  // Request native notification permission on load
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Socket connection
   const socketRef = useRef<Socket | null>(null);
 
@@ -369,11 +393,20 @@ function MyStay() {
         return [data.task, ...prevTasks];
       });
 
-      // Show temporary alert notifications for updates
+      // Show native and in-app notifications for updates
       if (data.event === 'updated') {
         const typeLabel = data.task.type === 'CLEANING' ? 'Dọn phòng' : data.task.type === 'FOOD' ? 'Đồ ăn' : data.task.type === 'TRANSPORT' ? 'Đưa đón' : 'Dịch vụ khác';
         const statusLabel = data.task.status === 'IN_PROGRESS' ? 'đang xử lý' : data.task.status === 'COMPLETED' ? 'đã hoàn thành' : 'đã huỷ';
-        alert(`🔔 Yêu cầu [${typeLabel}] của bạn ${statusLabel}!`);
+        const title = `Mango Hotel - Dịch vụ phòng`;
+        const body = `Yêu cầu [${typeLabel}] của bạn ${statusLabel}!`;
+        
+        // In-app Toast
+        addToast(title, body, 'info');
+
+        // Native push notification (if allowed)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(title, { body });
+        }
       }
     });
 
@@ -559,7 +592,22 @@ function MyStay() {
 
   // Authenticated Guest Dashboard
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 relative">
+      {/* Toast Notifications Container */}
+      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className="pointer-events-auto w-72 bg-white border border-slate-200 shadow-xl rounded-xl p-4 transition-all duration-300 transform translate-y-0 opacity-100">
+            <div className="flex items-start gap-3">
+              <div className="text-emerald-500 mt-0.5"><MessageSquare className="h-5 w-5" /></div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">{t.title}</h4>
+                <p className="text-xs text-slate-600 mt-1">{t.message}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Banner / Message Alert */}
       {paymentMessage && (
         <div className={`text-center py-4 px-6 text-sm font-bold text-white shadow-md animate-bounce flex items-center justify-center gap-2 ${
