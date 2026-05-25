@@ -9,7 +9,7 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "migrate": "typeorm migration:run -d src/database/data-source.ts",
+    "migrate": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migrate:run": "typeorm migration:run -d dist/database/data-source.js",
     "migrate:revert": "typeorm migration:revert -d dist/database/data-source.js",
     "migrate:generate": "typeorm migration:generate -d src/database/data-source.ts"

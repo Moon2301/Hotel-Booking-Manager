@@ -8,9 +8,12 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "migrate": "turbo run migrate",
-    "docker:up": "docker compose up -d",
+    "docker:up": "docker compose up -d --build",
+    "docker:dev": "docker compose up --build",
     "docker:down": "docker compose down",
-    "docker:tools": "docker compose --profile tools up -d"
+    "docker:logs": "docker compose logs -f dev",
+    "docker:tools": "docker compose --profile tools up -d",
+    "docker:infra": "docker compose up -d postgres redis"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

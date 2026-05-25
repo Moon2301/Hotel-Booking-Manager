@@ -1,19 +1,24 @@
 import { DataSource } from 'typeorm';
 import * as dotenv from 'dotenv';
-import { join } from 'path';
-
-// For ESM in Node.js, __dirname is not available unless we polyfill it
-// But for the TypeORM CLI with ts-node, it often handles it if we use the right tsconfig
+import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 
-// Let's use a robust way to get the path in both CJS and TS-node environments
-let envPath = join(__dirname, '../../../../.env');
-if (!existsSync(envPath)) {
-  envPath = join(__dirname, '../../../.env');
-}
-dotenv.config({ path: envPath });
+/** API package root (apps/api) — TypeORM CLI should run with cwd = apps/api */
+const apiRoot = resolve(process.cwd());
+const here = join(apiRoot, 'src/database');
 
-const isJs = __filename.endsWith('.js');
+const envCandidates = [
+  join(apiRoot, '.env'),
+  join(apiRoot, '../../.env'),
+];
+for (const envPath of envCandidates) {
+  if (existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
+
+const isJs = process.argv.some((arg) => arg.includes('dist/database'));
 const ext = isJs ? 'js' : 'ts';
 
 export const AppDataSource = new DataSource({
@@ -23,8 +28,8 @@ export const AppDataSource = new DataSource({
   username: process.env.POSTGRES_USER || 'hotel_user',
   password: process.env.POSTGRES_PASSWORD || 'hotel_secret',
   database: process.env.POSTGRES_DB || 'hotel_db',
-  entities: [join(__dirname, `../**/*.entity.${ext}`)],
-  migrations: [join(__dirname, `./migrations/*.${ext}`)],
+  entities: [join(here, `../**/*.entity.${ext}`)],
+  migrations: [join(here, `./migrations/*.${ext}`)],
   synchronize: false,
   logging: true,
 });

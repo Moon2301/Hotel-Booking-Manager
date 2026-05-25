@@ -1,8 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-
-const API_INTERNAL_URL =
-  process.env.API_INTERNAL_URL || 'http://localhost:3000';
+import { serverApiUrl } from '@/lib/server-api-url';
 
 /**
  * Decode a JWT payload without verifying the signature.
@@ -23,7 +21,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const response = await fetch(`${API_INTERNAL_URL}/api/v1/auth/login`, {
+    const response = await fetch(serverApiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

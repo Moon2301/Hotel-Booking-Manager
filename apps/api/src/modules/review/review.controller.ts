@@ -23,6 +23,8 @@ export class ReviewController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List reviews for a property' })
   @ApiQuery({ name: 'propertyId', required: false })
   @ApiQuery({ name: 'status', enum: ReviewStatus, required: false })

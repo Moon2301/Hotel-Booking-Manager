@@ -1,7 +1,6 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import Link from 'next/link';
 import { Plus } from 'lucide-react';
 
 import { DataTable } from '@/components/data-table/data-table';
@@ -59,11 +58,9 @@ export default function PropertiesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Properties</h1>
-        <Button asChild>
-          <Link href="/properties/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Tạo Property
-          </Link>
+        <Button disabled title="Form tạo property sẽ bổ sung sau">
+          <Plus className="mr-2 h-4 w-4" />
+          Tạo Property
         </Button>
       </div>
 

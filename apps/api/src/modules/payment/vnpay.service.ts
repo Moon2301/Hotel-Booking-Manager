@@ -6,8 +6,9 @@ export interface VnpayConfig {
   tmnCode: string;
   hashSecret: string;
   paymentUrl: string;
-  apiUrl: string;
+  apiPublicUrl: string;
   clientUrl: string;
+  clientPaymentPath: string;
 }
 
 @Injectable()
@@ -18,11 +19,47 @@ export class VnpayService {
   constructor(private configService: ConfigService) {
     this.config = {
       tmnCode: this.configService.get<string>('vnpay.tmnCode', 'R4923J2J'),
-      hashSecret: this.configService.get<string>('vnpay.hashSecret', 'P68JKLG8376RKRTBPWCKDD7XR3OYF4TZ'),
-      paymentUrl: this.configService.get<string>('vnpay.paymentUrl', 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
-      apiUrl: this.configService.get<string>('API_URL', 'http://localhost:3000'),
-      clientUrl: this.configService.get<string>('CLIENT_URL', 'http://localhost:8080'),
+      hashSecret: this.configService.get<string>(
+        'vnpay.hashSecret',
+        'P68JKLG8376RKRTBPWCKDD7XR3OYF4TZ',
+      ),
+      paymentUrl: this.configService.get<string>(
+        'vnpay.paymentUrl',
+        'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+      ),
+      apiPublicUrl: this.configService.get<string>(
+        'vnpay.apiPublicUrl',
+        'http://localhost:3000',
+      ),
+      clientUrl: this.configService.get<string>(
+        'vnpay.clientUrl',
+        'http://localhost:8080',
+      ),
+      clientPaymentPath: this.configService.get<string>(
+        'vnpay.clientPaymentPath',
+        '/my-stay',
+      ),
     };
+  }
+
+  /**
+   * URL VNPay redirect về sau khi khách thanh toán (phải trỏ tới API, không phải web client).
+   */
+  getVnpayReturnUrl(): string {
+    const base = this.config.apiPublicUrl.replace(/\/$/, '');
+    return `${base}/api/v1/payment/vnpay/vnpay-return`;
+  }
+
+  /**
+   * Redirect khách về trang My Stay trên web client.
+   */
+  buildClientRedirect(params: Record<string, string>): string {
+    const base = this.config.clientUrl.replace(/\/$/, '');
+    const path = this.config.clientPaymentPath.startsWith('/')
+      ? this.config.clientPaymentPath
+      : `/${this.config.clientPaymentPath}`;
+    const qs = new URLSearchParams(params).toString();
+    return qs ? `${base}${path}?${qs}` : `${base}${path}`;
   }
 
   /**
@@ -30,7 +67,7 @@ export class VnpayService {
    */
   createPaymentUrl(invoiceId: string, totalAmount: number, ipAddr: string): string {
     const createDate = this.formatDate(new Date());
-    const returnUrl = `${this.config.apiUrl}/api/v1/payment/vnpay/vnpay-return`;
+    const returnUrl = this.getVnpayReturnUrl();
 
     const vnpParams: Record<string, string | number> = {
       vnp_Version: '2.1.0',
@@ -39,15 +76,14 @@ export class VnpayService {
       vnp_Locale: 'vn',
       vnp_CurrCode: 'VND',
       vnp_TxnRef: `${invoiceId}-${createDate}`,
-      vnp_OrderInfo: `Thanh toan hoa don ${invoiceId} tai Mango Hotel`,
+      vnp_OrderInfo: `Thanh toan hoa don ${invoiceId}`,
       vnp_OrderType: 'other',
-      vnp_Amount: totalAmount * 100, // VNPay requires amount in smallest unit
+      vnp_Amount: totalAmount * 100,
       vnp_ReturnUrl: returnUrl,
       vnp_IpAddr: ipAddr,
       vnp_CreateDate: createDate,
     };
 
-    // Sort params alphabetically
     const sortedKeys = Object.keys(vnpParams).sort();
     const signData = sortedKeys
       .map((key) => `${key}=${encodeURIComponent(vnpParams[key]).replace(/%20/g, '+')}`)
@@ -78,7 +114,6 @@ export class VnpayService {
     delete vnpParams['vnp_SecureHash'];
     delete vnpParams['vnp_SecureHashType'];
 
-    // Sort and sign
     const sortedKeys = Object.keys(vnpParams).sort();
     const signData = sortedKeys
       .map((key) => `${key}=${encodeURIComponent(vnpParams[key]).replace(/%20/g, '+')}`)
@@ -90,14 +125,16 @@ export class VnpayService {
     const isValid = secureHash === signed;
     const isSuccess = vnpParams['vnp_ResponseCode'] === '00';
     const txnRef = vnpParams['vnp_TxnRef'] || '';
-    const invoiceId = txnRef.split('-')[0];
+    const invoiceId = this.parseInvoiceIdFromTxnRef(txnRef);
     const vnpayTransactionId = vnpParams['vnp_TransactionNo'] || '';
 
     return { isValid, isSuccess, invoiceId, vnpayTransactionId };
   }
 
-  getClientUrl(): string {
-    return this.config.clientUrl;
+  /** vnp_TxnRef = `{uuid}-{yyyyMMddHHmmss}` */
+  parseInvoiceIdFromTxnRef(txnRef: string): string {
+    const match = txnRef.match(/^(.+)-(\d{14})$/);
+    return match ? match[1] : txnRef;
   }
 
   private formatDate(date: Date): string {

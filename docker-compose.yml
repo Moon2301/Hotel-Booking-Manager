@@ -46,14 +46,55 @@ services:
       - hotel_net
 
   # ─────────────────────────────────────────
-  # pgAdmin (optional, dev only)
+  # Dev stack: migrate + seed + pnpm dev (turbo)
+  # ─────────────────────────────────────────
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: hotel_dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
+      API_INTERNAL_URL: http://127.0.0.1:3000
+      API_PUBLIC_URL: http://localhost:3000
+      CLIENT_URL: http://localhost:8080
+      CLIENT_PAYMENT_PATH: /my-stay
+      NEXT_PUBLIC_API_URL: ""
+      CORS_ORIGINS: http://localhost:3001,http://localhost:8080,http://localhost:3000
+      TURBO_UI: stream
+    ports:
+      - "${API_PORT:-3000}:3000"
+      - "${WEB_ADMIN_PORT:-3001}:3001"
+      - "${WEB_CLIENT_PORT:-8080}:8080"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/api/node_modules
+      - /app/apps/web-admin/node_modules
+      - /app/apps/web-client/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hotel_net
+
+  # ─────────────────────────────────────────
+  # pgAdmin (optional)
   # ─────────────────────────────────────────
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: hotel_pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@hotel.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@hotel.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_secret}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
@@ -72,7 +113,6 @@ volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
-
 networks:
   hotel_net:
     driver: bridge

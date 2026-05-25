@@ -1,8 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-
-const API_INTERNAL_URL =
-  process.env.API_INTERNAL_URL || 'http://localhost:3000';
+import { serverApiUrl } from '@/lib/server-api-url';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${API_INTERNAL_URL}/api/v1/auth/refresh`, {
+    const response = await fetch(serverApiUrl('/auth/refresh'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
