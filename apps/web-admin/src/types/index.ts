@@ -114,6 +114,8 @@ export interface Booking {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  checkinToken?: string | null;
+  checkinTokenExpiresAt?: string | null;
   // Relations
   guest?: User;
   room?: Room;
@@ -212,6 +214,7 @@ export interface Review {
   // Relations
   guest?: User;
   property?: Property;
+  booking?: Booking;
 }
 
 // === Chat ===

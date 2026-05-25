@@ -51,7 +51,18 @@ export default () => ({
   vnpay: {
     tmnCode: process.env.VNP_TMNCODE || 'R4923J2J',
     hashSecret: process.env.VNP_HASHSECRET || 'P68JKLG8376RKRTBPWCKDD7XR3OYF4TZ',
-    paymentUrl: process.env.VNP_PAYMENT_URL || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
-    returnUrl: process.env.VNP_RETURN_URL || 'http://localhost:8080/my-stay?payment=',
+    paymentUrl:
+      process.env.VNP_PAYMENT_URL ||
+      'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+    /** Public API base — VNPay gọi callback về đây (không có /api/v1 suffix) */
+    apiPublicUrl:
+      process.env.API_PUBLIC_URL ||
+      process.env.API_URL ||
+      'http://localhost:3000',
+    /** Web client — redirect khách sau thanh toán */
+    clientUrl: process.env.CLIENT_URL || 'http://localhost:8080',
+    /** Đường dẫn trên web client sau thanh toán */
+    clientPaymentPath:
+      process.env.CLIENT_PAYMENT_PATH || '/my-stay',
   },
 });

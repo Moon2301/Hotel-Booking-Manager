@@ -54,7 +54,7 @@ describe('POST /api/auth/login', () => {
 
     // Verify backend was called correctly
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:3000/auth/login',
+      'http://localhost:3000/api/v1/auth/login',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

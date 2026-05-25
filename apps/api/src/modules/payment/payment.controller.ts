@@ -100,21 +100,37 @@ export class PaymentController {
     @Res() res: Response,
   ) {
     const result = this.vnpayService.verifyCallback(query);
-    const clientUrl = this.vnpayService.getClientUrl();
 
     if (!result.isValid) {
-      return res.redirect(`${clientUrl}/my-stay?payment=error&reason=invalid_signature`);
+      return res.redirect(
+        this.vnpayService.buildClientRedirect({
+          payment: 'error',
+          reason: 'invalid_signature',
+        }),
+      );
     }
 
     if (!result.isSuccess) {
-      return res.redirect(`${clientUrl}/my-stay?payment=failed`);
+      return res.redirect(
+        this.vnpayService.buildClientRedirect({ payment: 'failed' }),
+      );
     }
 
     try {
-      await this.invoiceService.confirmVnpayPayment(result.invoiceId, result.vnpayTransactionId);
-      return res.redirect(`${clientUrl}/my-stay?payment=success`);
-    } catch (err) {
-      return res.redirect(`${clientUrl}/my-stay?payment=error&reason=server_error`);
+      await this.invoiceService.confirmVnpayPayment(
+        result.invoiceId,
+        result.vnpayTransactionId,
+      );
+      return res.redirect(
+        this.vnpayService.buildClientRedirect({ payment: 'success' }),
+      );
+    } catch {
+      return res.redirect(
+        this.vnpayService.buildClientRedirect({
+          payment: 'error',
+          reason: 'server_error',
+        }),
+      );
     }
   }
 }

@@ -46,7 +46,7 @@ describe('POST /api/auth/refresh', () => {
 
     // Verify backend was called with the refresh token
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:3000/auth/refresh',
+      'http://localhost:3000/api/v1/auth/refresh',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

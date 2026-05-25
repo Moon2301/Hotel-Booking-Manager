@@ -18,10 +18,11 @@ export const propertyKeys = {
 /**
  * Hook to fetch all properties.
  */
-export function useProperties() {
+export function useProperties(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: propertyKeys.all,
     queryFn: getProperties,
+    enabled: options?.enabled ?? true,
   });
 }
 

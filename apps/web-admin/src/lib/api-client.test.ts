@@ -36,9 +36,8 @@ describe('api-client', () => {
       );
     });
 
-    it('should use NEXT_PUBLIC_API_URL as baseURL or empty string', () => {
-      // In test environment, env var is not set, so baseURL should be empty string
-      expect(apiClient.defaults.baseURL).toBe('');
+    it('should use /api/v1 when NEXT_PUBLIC_API_URL is unset', () => {
+      expect(apiClient.defaults.baseURL).toBe('/api/v1');
     });
   });
 

@@ -42,7 +42,7 @@ describe('POST /api/auth/logout', () => {
 
     // Verify backend was called with Bearer token
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost:3000/auth/logout',
+      'http://localhost:3000/api/v1/auth/logout',
       expect.objectContaining({
         method: 'POST',
         headers: {

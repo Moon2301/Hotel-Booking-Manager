@@ -7,7 +7,7 @@ export default function AuthLayout({
 }) {
   return (
     <AuthProvider>
-      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
         {children}
       </div>
     </AuthProvider>

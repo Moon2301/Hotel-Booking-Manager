@@ -76,9 +76,13 @@ export default function TasksPage() {
         const { token } = await res.json();
         if (!token) return;
 
-        socket = io('http://localhost:3000/tasks', {
+        const apiOrigin =
+          process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+          `${window.location.protocol}//${window.location.hostname}:3000`;
+
+        socket = io(`${apiOrigin}/tasks`, {
           auth: { token },
-          transports: ['websocket', 'polling']
+          transports: ['websocket', 'polling'],
         });
 
         socket.on('connect', () => {

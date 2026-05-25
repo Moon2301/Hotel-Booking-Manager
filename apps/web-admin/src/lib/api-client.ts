@@ -7,11 +7,20 @@ import axios, {
 import { toast } from '@/hooks/use-toast';
 import type { ApiError } from '@/types';
 
+function resolveClientApiBaseUrl(): string {
+  const publicUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!publicUrl) {
+    // Same-origin requests proxied by Next.js rewrites (/api/v1 → Nest API)
+    return '/api/v1';
+  }
+  return `${publicUrl.replace(/\/$/, '')}/api/v1`;
+}
+
 // Axios instance configured for the BFF pattern.
-// - baseURL uses NEXT_PUBLIC_API_URL for client-side calls (empty string means same origin via Next.js rewrites)
+// - baseURL points at /api/v1 (rewrites) or NEXT_PUBLIC_API_URL + /api/v1
 // - withCredentials ensures httpOnly cookies are sent with cross-origin requests
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '',
+  baseURL: resolveClientApiBaseUrl(),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

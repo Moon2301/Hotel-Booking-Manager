@@ -268,6 +268,7 @@ function MyStay() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<{ status: 'success' | 'failed' | 'error', text: string } | null>(null);
+  const [payLoading, setPayLoading] = useState(false);
 
   // New service request form
   const [serviceType, setServiceType] = useState<'CLEANING' | 'FOOD' | 'TRANSPORT' | 'OTHER'>('CLEANING');
@@ -302,26 +303,57 @@ function MyStay() {
   // Socket connection
   const socketRef = useRef<Socket | null>(null);
 
-  // Handle VNPay query parameters
+  const refetchInvoice = async (bookingId: string, authToken: string) => {
+    const invoiceRes = await fetch(`/api/v1/invoices/booking/${bookingId}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (invoiceRes.ok) {
+      const invoiceData = await invoiceRes.json();
+      setInvoice(invoiceData);
+    }
+  };
+
+  // Handle VNPay redirect query parameters (?payment=success|failed|error)
   useEffect(() => {
     const paymentStatus = searchParams.get('payment');
+    if (!paymentStatus) return;
+
+    setActiveTab('invoice');
+
     if (paymentStatus === 'success') {
-      setPaymentMessage({ status: 'success', text: 'Thanh toán hoá đơn thành công qua cổng VNPay!' });
-      // Remove params
-      searchParams.delete('payment');
-      setSearchParams(searchParams);
+      setPaymentMessage({
+        status: 'success',
+        text: 'Thanh toán hoá đơn thành công qua cổng VNPay!',
+      });
     } else if (paymentStatus === 'failed') {
-      setPaymentMessage({ status: 'failed', text: 'Thanh toán thất bại hoặc bị hủy giao dịch.' });
-      searchParams.delete('payment');
-      setSearchParams(searchParams);
+      setPaymentMessage({
+        status: 'failed',
+        text: 'Thanh toán thất bại hoặc bị hủy giao dịch.',
+      });
     } else if (paymentStatus === 'error') {
       const reason = searchParams.get('reason');
-      setPaymentMessage({ status: 'error', text: `Lỗi giao dịch: ${reason || 'Không xác định'}` });
-      searchParams.delete('payment');
-      searchParams.delete('reason');
-      setSearchParams(searchParams);
+      const reasonText =
+        reason === 'invalid_signature'
+          ? 'Chữ ký VNPay không hợp lệ.'
+          : reason === 'server_error'
+            ? 'Lỗi xác nhận thanh toán trên server.'
+            : reason || 'Không xác định';
+      setPaymentMessage({ status: 'error', text: `Lỗi giao dịch: ${reasonText}` });
     }
-  }, [searchParams, setSearchParams]);
+
+    const clearParams = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('payment');
+      next.delete('reason');
+      setSearchParams(next, { replace: true });
+    };
+
+    if (paymentStatus === 'success' && token && booking) {
+      refetchInvoice(booking.id, token).finally(clearParams);
+    } else if (paymentStatus !== 'success') {
+      clearParams();
+    }
+  }, [searchParams, setSearchParams, token, booking]);
 
   // Decode/parse local storage auth details on load
   useEffect(() => {
@@ -468,24 +500,35 @@ function MyStay() {
   };
 
   const handlePayVNPay = async () => {
-    if (!invoice) return;
+    if (!invoice || !token) return;
+    setPayLoading(true);
     try {
       const res = await fetch('/api/v1/payment/vnpay/create-url', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ invoiceId: invoice.id })
+        body: JSON.stringify({ invoiceId: invoice.id }),
       });
       const data = await res.json();
-      if (data?.paymentUrl) {
+      if (res.ok && data?.paymentUrl) {
         window.location.href = data.paymentUrl;
-      } else {
-        alert('Không tạo được liên kết thanh toán. Thử lại sau.');
+        return;
       }
-    } catch (err) {
-      alert('Đã xảy ra lỗi kết nối VNPay.');
+      setPaymentMessage({
+        status: 'error',
+        text: data?.message || 'Không tạo được liên kết thanh toán VNPay.',
+      });
+      setActiveTab('invoice');
+    } catch {
+      setPaymentMessage({
+        status: 'error',
+        text: 'Không kết nối được máy chủ thanh toán. Kiểm tra API đang chạy.',
+      });
+      setActiveTab('invoice');
+    } finally {
+      setPayLoading(false);
     }
   };
 
@@ -789,69 +832,122 @@ function MyStay() {
             )}
 
             {activeTab === 'invoice' && (
-              <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm max-w-3xl">
-                <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-4">
-                  <div>
-                    <h2 className="text-xl font-extrabold text-slate-900">Hoá đơn dịch vụ</h2>
-                    <p className="text-slate-500 text-sm">Hoá đơn tổng hợp phòng và các dịch vụ đi kèm</p>
+              <div className="mx-auto max-w-3xl space-y-6">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                  <div className="mb-6 flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-extrabold text-slate-900">
+                        Hoá đơn & Thanh toán
+                      </h2>
+                      <p className="text-sm text-slate-500">
+                        Thanh toán online qua VNPay Sandbox — sau khi hoàn tất bạn sẽ được
+                        chuyển về trang này.
+                      </p>
+                    </div>
+                    {invoice && (
+                      <span
+                        className={`inline-flex w-fit px-3 py-1 rounded-full text-xs font-bold ${
+                          invoice.paymentStatus === 'PAID'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {invoice.paymentStatus === 'PAID'
+                          ? 'Đã thanh toán'
+                          : 'Chờ thanh toán'}
+                      </span>
+                    )}
                   </div>
-                  {invoice && (
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      invoice.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700 animate-pulse'
-                    }`}>
-                      {invoice.paymentStatus === 'PAID' ? 'Đã Thanh Toán' : 'Chưa Thanh Toán'}
-                    </span>
+
+                  {!invoice ? (
+                    <div className="py-10 text-center text-slate-500">
+                      <FileText className="mx-auto mb-3 h-12 w-12 opacity-35" />
+                      <p>Chưa có hoá đơn cho đặt phòng này.</p>
+                      <p className="mt-1 text-xs">
+                        Liên hệ lễ tân để xuất hoá đơn trước khi thanh toán online.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="rounded-xl bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase text-slate-400">
+                            Mã hoá đơn
+                          </p>
+                          <p className="mt-1 font-mono text-sm font-semibold text-slate-700">
+                            {invoice.id}
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase text-slate-400">
+                            Ngày xuất
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-slate-700">
+                            {new Date(invoice.issuedAt).toLocaleDateString('vi-VN')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-6">
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                          Số tiền cần thanh toán
+                        </p>
+                        <p className="mt-2 text-4xl font-black text-slate-900">
+                          {new Intl.NumberFormat('vi-VN', {
+                            style: 'currency',
+                            currency: 'VND',
+                          }).format(invoice.totalAmount)}
+                        </p>
+
+                        {invoice.paymentStatus !== 'PAID' ? (
+                          <div className="mt-6 space-y-3">
+                            <p className="text-sm text-slate-600">
+                              Bạn sẽ được chuyển sang cổng VNPay. Sau khi thanh toán,
+                              hệ thống tự quay về{' '}
+                              <span className="font-mono text-xs">/my-stay</span>.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handlePayVNPay}
+                              disabled={payLoading}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                            >
+                              <CreditCard className="h-5 w-5" />
+                              {payLoading
+                                ? 'Đang tạo liên kết VNPay...'
+                                : 'Thanh toán qua VNPay'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-4 flex items-start gap-3 rounded-xl bg-white p-4 text-emerald-700">
+                            <CheckCircle className="h-6 w-6 shrink-0" />
+                            <div>
+                              <p className="text-sm font-bold">Đã thanh toán thành công</p>
+                              <p className="text-xs text-slate-500">
+                                Phương thức:{' '}
+                                {invoice.paymentMethod === 'VNPAY'
+                                  ? 'VNPay (Online)'
+                                  : invoice.paymentMethod || '—'}
+                              </p>
+                              {invoice.paidAt && (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  Thời gian:{' '}
+                                  {new Date(invoice.paidAt).toLocaleString('vi-VN')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {!invoice ? (
-                  <div className="text-center py-10 text-slate-500">
-                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-35" />
-                    <p>Hiện chưa có hoá đơn được tạo cho đặt phòng này.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase">Mã Hoá Đơn</p>
-                        <p className="text-sm font-mono font-semibold text-slate-700">{invoice.id}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase">Ngày Xuất</p>
-                        <p className="text-sm font-semibold text-slate-700">{new Date(invoice.issuedAt).toLocaleDateString('vi-VN')}</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-50 p-5 rounded-xl flex justify-between items-center border border-slate-100">
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Tổng cộng chi phí</p>
-                        <p className="text-3xl font-black text-slate-900">
-                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(invoice.totalAmount)}
-                        </p>
-                      </div>
-                      
-                      {invoice.paymentStatus !== 'PAID' && (
-                        <button
-                          onClick={handlePayVNPay}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-emerald-100 hover:shadow-none transition-all flex items-center gap-2"
-                        >
-                          <CreditCard className="h-5 w-5" />
-                          Thanh toán VNPay
-                        </button>
-                      )}
-                    </div>
-
-                    {invoice.paymentStatus === 'PAID' && (
-                      <div className="border-t border-slate-100 pt-4 flex items-center gap-3 text-emerald-600 bg-emerald-50/50 p-4 rounded-xl">
-                        <CheckCircle className="h-6 w-6" />
-                        <div>
-                          <p className="text-sm font-bold">Thanh toán hoàn tất</p>
-                          <p className="text-xs text-slate-500">Phương thức: {invoice.paymentMethod === 'VNPAY' ? 'VNPay (Online)' : invoice.paymentMethod}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <p className="text-center text-xs text-slate-400">
+                  Môi trường dev: đảm bảo API chạy tại{' '}
+                  <span className="font-mono">localhost:3000</span> và web client tại{' '}
+                  <span className="font-mono">localhost:8080</span>
+                </p>
               </div>
             )}
 
