@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Task } from './entities/task.entity';
+import { Booking } from '../booking/entities/booking.entity';
 import { AuditLog } from '../auth/entities/audit-log.entity';
 import { TaskService } from './task.service';
 import { TaskController } from './task.controller';
@@ -9,7 +10,7 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Task, AuditLog]),
+    TypeOrmModule.forFeature([Task, Booking, AuditLog]),
     AuthModule,
   ],
   controllers: [TaskController],

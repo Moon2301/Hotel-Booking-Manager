@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post } from '@/lib/api-client';
-import { toast } from '@/hooks/use-toast';
-import { Booking, Property } from '@/types';
+import { usePropertySelection } from '@/providers/property-selection-provider';
+import { useQuery } from '@tanstack/react-query';
+import { get } from '@/lib/api-client';
+import { Property } from '@/types';
 import {
   Select,
   SelectContent,
@@ -13,19 +12,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { QrCode } from 'lucide-react';
-
+import { BookingsQueueTable } from '@/components/bookings/BookingsQueueTable';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Timer, AlertCircle } from 'lucide-react';
 import { useEffect, useState as useReactState } from 'react';
+import { useMounted } from '@/hooks/use-mounted';
 
-// Live countdown component for holds
 function HoldCountdown({ expiresAt }: { expiresAt: string }) {
+  const mounted = useMounted();
   const [timeLeft, setTimeLeft] = useReactState('');
 
   useEffect(() => {
+    if (!mounted) return;
     const update = () => {
       const diff = new Date(expiresAt).getTime() - Date.now();
       if (diff <= 0) {
@@ -39,49 +38,39 @@ function HoldCountdown({ expiresAt }: { expiresAt: string }) {
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt]);
+  }, [expiresAt, mounted]);
 
-  return <span className={`font-mono font-bold ${timeLeft === 'Đã hết hạn' ? 'text-destructive' : 'text-amber-600'}`}>{timeLeft}</span>;
+  if (!mounted) {
+    return (
+      <span className="font-mono font-bold text-amber-600" suppressHydrationWarning>
+        …
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`font-mono font-bold ${timeLeft === 'Đã hết hạn' ? 'text-destructive' : 'text-amber-600'}`}
+      suppressHydrationWarning
+    >
+      {timeLeft}
+    </span>
+  );
 }
 
 export default function BookingsPage() {
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
-  const queryClient = useQueryClient();
+  const { selectedPropertyId, setSelectedPropertyId } = usePropertySelection();
 
   const { data: properties } = useQuery({
     queryKey: ['properties'],
     queryFn: () => get<Property[]>('/properties'),
   });
 
-  const { data: bookings, isLoading: bookingsLoading } = useQuery({
-    queryKey: ['bookings', selectedPropertyId],
-    queryFn: () => get<{ data: Booking[] }>(`/bookings?propertyId=${selectedPropertyId}`),
-    enabled: !!selectedPropertyId,
-  });
-
   const { data: holds, isLoading: holdsLoading } = useQuery({
     queryKey: ['holds', selectedPropertyId],
     queryFn: () => get<any[]>(`/holds?propertyId=${selectedPropertyId}`),
     enabled: !!selectedPropertyId,
-    refetchInterval: 10000, // Refresh holds every 10s
-  });
-
-  const generateTokenMutation = useMutation({
-    mutationFn: (bookingId: string) => post(`/bookings/${bookingId}/generate-checkin-token`, {}),
-    onSuccess: () => {
-      toast({
-        title: 'Thành công',
-        description: 'Đã tạo mã QR & PIN check-in và gửi email cho khách.',
-      });
-      queryClient.invalidateQueries({ queryKey: ['bookings', selectedPropertyId] });
-    },
-    onError: (err: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi',
-        description: err.response?.data?.message || 'Không thể tạo mã check-in',
-      });
-    },
+    refetchInterval: 10000,
   });
 
   return (
@@ -105,54 +94,27 @@ export default function BookingsPage() {
         </Select>
       </div>
 
-      {!selectedPropertyId && <p className="text-muted-foreground">Vui lòng chọn cơ sở để xem dữ liệu.</p>}
+      {!selectedPropertyId && (
+        <p className="text-muted-foreground">Vui lòng chọn cơ sở để xem dữ liệu.</p>
+      )}
 
       {selectedPropertyId && (
-        <Tabs defaultValue="bookings" className="w-full">
+        <Tabs defaultValue="paid" className="w-full">
           <TabsList className="mb-4">
-            <TabsTrigger value="bookings">Danh sách Đặt phòng</TabsTrigger>
+            <TabsTrigger value="paid">Đã thanh toán (PAID)</TabsTrigger>
+            <TabsTrigger value="pending">Chờ thanh toán (PENDING)</TabsTrigger>
             <TabsTrigger value="holds" className="gap-2">
               <Timer className="h-4 w-4" />
               Monitor Giữ chỗ (Holds)
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="bookings">
-            {bookingsLoading && <p>Đang tải...</p>}
-            {!bookingsLoading && bookings?.data && (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {bookings.data.map((booking) => (
-                  <Card key={booking.id} className="flex flex-col justify-between">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">BKG: {booking.id.split('-')[0]}</CardTitle>
-                      <Badge variant={booking.status === 'CONFIRMED' ? 'default' : 'secondary'} className="w-fit">
-                        {booking.status}
-                      </Badge>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xs text-muted-foreground mb-4 space-y-1">
-                        <p>Check-in: {new Date(booking.checkIn).toLocaleDateString('vi-VN')}</p>
-                        <p>Check-out: {new Date(booking.checkOut).toLocaleDateString('vi-VN')}</p>
-                        <p>Tên khách: {booking.guest?.fullName || 'N/A'}</p>
-                      </div>
-                      {booking.status === 'CONFIRMED' && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full gap-2"
-                          disabled={generateTokenMutation.isPending || !!booking.checkinToken}
-                          onClick={() => generateTokenMutation.mutate(booking.id)}
-                        >
-                          <QrCode className="h-4 w-4" />
-                          {booking.checkinToken ? 'Đã tạo mã QR' : 'Tạo mã Check-in'}
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-                {bookings.data.length === 0 && <p className="text-muted-foreground">Không có dữ liệu đặt phòng.</p>}
-              </div>
-            )}
+          <TabsContent value="paid">
+            <BookingsQueueTable propertyId={selectedPropertyId} mode="paid" />
+          </TabsContent>
+
+          <TabsContent value="pending">
+            <BookingsQueueTable propertyId={selectedPropertyId} mode="pending" />
           </TabsContent>
 
           <TabsContent value="holds">
@@ -163,20 +125,32 @@ export default function BookingsPage() {
                   <Card key={hold.id} className="border-amber-200 bg-amber-50/50">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <CardTitle className="text-sm">Hold ID: {hold.id.split('-')[0]}</CardTitle>
-                        <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
+                        <CardTitle className="text-sm">
+                          Hold ID: {hold.id.split('-')[0]}
+                        </CardTitle>
+                        <Badge
+                          variant="outline"
+                          className="bg-amber-100 text-amber-800 border-amber-200"
+                        >
                           Đang giữ chỗ
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent>
                       <div className="text-xs text-slate-600 mb-3 space-y-1">
-                        <p><strong>Loại phòng:</strong> {hold.roomType?.name || hold.roomTypeId}</p>
-                        <p><strong>Ngày:</strong> {hold.nights.join(', ')}</p>
+                        <p>
+                          <strong>Loại phòng:</strong>{' '}
+                          {hold.roomType?.name || hold.roomTypeId}
+                        </p>
+                        <p>
+                          <strong>Ngày:</strong> {hold.nights.join(', ')}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-amber-100 shadow-sm">
                         <Timer className="h-4 w-4 text-amber-500" />
-                        <span className="text-xs font-semibold text-slate-700">Còn lại:</span>
+                        <span className="text-xs font-semibold text-slate-700">
+                          Còn lại:
+                        </span>
                         <HoldCountdown expiresAt={hold.expiresAt} />
                       </div>
                     </CardContent>

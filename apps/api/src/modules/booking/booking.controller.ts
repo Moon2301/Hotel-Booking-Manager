@@ -31,6 +31,7 @@ import {
   ListBookingsQueryDto,
   CancelBookingDto,
   CheckInDto,
+  AssignBookingRoomDto,
   CreateCancellationPolicyDto,
   UpdateCancellationPolicyDto,
 } from './dto/booking.dto';
@@ -106,6 +107,26 @@ export class BookingController {
     return this.bookingService.releaseHold(id);
   }
 
+  @Get('properties/:propertyId/rooms/:roomId/folio')
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FRONT_DESK,
+    UserRole.SUPPORT,
+    UserRole.HOUSEKEEPING,
+  )
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Get room folio: who is staying, charges, and invoices (for admin room board)',
+  })
+  getRoomFolio(
+    @Param('propertyId') propertyId: string,
+    @Param('roomId') roomId: string,
+  ) {
+    return this.bookingService.getRoomFolio(propertyId, roomId);
+  }
+
   // ─── Bookings ─────────────────────────────────────────────────────────────
 
   @Get('bookings')
@@ -119,6 +140,21 @@ export class BookingController {
   @ApiOperation({ summary: 'List bookings with filters and pagination' })
   listBookings(@Query() query: ListBookingsQueryDto) {
     return this.bookingService.listBookings(query);
+  }
+
+  @Post('bookings/sync-paid')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER, UserRole.FRONT_DESK)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Auto-assign RESERVED rooms for PAID bookings (incl. stale > 30 min)',
+  })
+  syncPaidBookings(
+    @Query('propertyId') propertyId: string | undefined,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.bookingService.syncPaidBookings(propertyId, req.user.id);
   }
 
   @Post('bookings')
@@ -173,6 +209,30 @@ export class BookingController {
     @Req() req: Request & { user: { id: string } },
   ) {
     return this.bookingService.cancelBooking(id, dto, req.user.id);
+  }
+
+  @Patch('bookings/:id/room')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER, UserRole.FRONT_DESK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reassign physical room for a PAID booking' })
+  reassignBookingRoom(
+    @Param('id') id: string,
+    @Body() dto: AssignBookingRoomDto,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.bookingService.reassignBookingRoom(id, dto.roomId, req.user.id);
+  }
+
+  @Post('bookings/:id/assign-room')
+  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER, UserRole.FRONT_DESK)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assign first available room for a PAID booking' })
+  assignRoom(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.bookingService.assignRoomOnPayment(id, req.user.id);
   }
 
   @Patch('bookings/:id/check-in')

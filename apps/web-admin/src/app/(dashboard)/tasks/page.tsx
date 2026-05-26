@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
 import { 
   Sparkles, 
   Coffee, 
@@ -19,9 +18,10 @@ import {
   FolderOpen
 } from 'lucide-react';
 
+import { ClientOnly } from '@/components/client-only';
 import { useTasks, useUpdateTask, taskKeys } from '@/hooks/queries/use-tasks';
 import { useAuth } from '@/hooks/use-auth';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/hooks/use-toast';
 import { TaskStatus, TaskType } from '@/types';
 import type { Task } from '@/types';
 import { Badge } from '@/components/ui/badge';
@@ -48,7 +48,6 @@ const typeMap: Record<TaskType, { label: string; color: string; icon: any }> = {
 export default function TasksPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { toast } = useToast();
   
   const { data: tasks = [], isLoading, isError, error } = useTasks();
   const updateTaskMutation = useUpdateTask();
@@ -58,75 +57,6 @@ export default function TasksPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [staffReport, setStaffReport] = useState('');
 
-  // Request native notification permission
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  // Socket Connection for Real-Time notifications
-  useEffect(() => {
-    let socket: any;
-
-    const initSocket = async () => {
-      try {
-        const res = await fetch('/api/auth/token');
-        if (!res.ok) return;
-        const { token } = await res.json();
-        if (!token) return;
-
-        const apiOrigin =
-          process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
-          `${window.location.protocol}//${window.location.hostname}:3000`;
-
-        socket = io(`${apiOrigin}/tasks`, {
-          auth: { token },
-          transports: ['websocket', 'polling'],
-        });
-
-        socket.on('connect', () => {
-          console.log('Connected to /tasks gateway in admin');
-          // Join the property room (for now broadcast fallback handles it, but joining is good practice)
-          // Since we might have multiple properties, we can join general room
-        });
-
-        socket.on('task_changed', (data: { event: 'created' | 'updated'; task: Task }) => {
-          console.log('WebSocket Task event received in admin:', data);
-          // Invalidate React Query cache to fetch fresh details
-          queryClient.invalidateQueries({ queryKey: taskKeys.all });
-          
-          if (data.event === 'created') {
-            const taskLabel = typeMap[data.task.type]?.label || data.task.type;
-            const roomNum = data.task.booking?.room?.roomNumber || '—';
-            const title = `Phòng ${roomNum}: Yêu cầu ${taskLabel}`;
-            const body = `Khách hàng vừa gửi một yêu cầu dịch vụ mới.`;
-
-            // Shadcn Toast
-            toast({
-              title,
-              description: body,
-              variant: 'default',
-            });
-
-            // Native push notification
-            if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification(title, { body });
-            }
-          }
-        });
-      } catch (err) {
-        console.error('Socket init error in admin:', err);
-      }
-    };
-
-    initSocket();
-
-    return () => {
-      if (socket) socket.disconnect();
-    };
-  }, [queryClient, toast]);
-
   const handleClaim = (taskId: string) => {
     if (!user) return;
     updateTaskMutation.mutate({
@@ -135,6 +65,13 @@ export default function TasksPage() {
         status: TaskStatus.IN_PROGRESS,
         assignedToId: user.id
       }
+    }, {
+      onSuccess: () => {
+        toast({
+          title: 'Đã nhận việc',
+          description: 'Task chuyển sang cột Đang thực hiện.',
+        });
+      },
     });
   };
 
@@ -156,6 +93,10 @@ export default function TasksPage() {
       onSuccess: () => {
         setCompleteDialogOpen(false);
         setSelectedTaskId(null);
+        toast({
+          title: 'Hoàn thành dịch vụ',
+          description: 'Khách sẽ nhận thông báo cập nhật trên My Stay.',
+        });
       }
     });
   };
@@ -376,10 +317,23 @@ function TaskCard({ task, onClaim, onComplete, onCancel }: TaskCardProps) {
         )}
 
         <div className="border-t border-slate-100 pt-2 flex flex-col gap-1 text-[10px] text-slate-400">
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {createdDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {createdDate.toLocaleDateString('vi-VN')}
-          </span>
+          <ClientOnly
+            fallback={
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                …
+              </span>
+            }
+          >
+            <span className="flex items-center gap-1" suppressHydrationWarning>
+              <Clock className="h-3 w-3" />
+              {createdDate.toLocaleTimeString('vi-VN', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}{' '}
+              - {createdDate.toLocaleDateString('vi-VN')}
+            </span>
+          </ClientOnly>
           {task.assignee && (
             <span className="flex items-center gap-1 font-medium text-slate-500">
               <User className="h-3 w-3" />

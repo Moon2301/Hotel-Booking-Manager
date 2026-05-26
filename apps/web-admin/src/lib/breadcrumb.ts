@@ -6,6 +6,8 @@ export interface BreadcrumbSegment {
 const SEGMENT_LABELS: Record<string, string> = {
   properties: 'Properties',
   'room-board': 'Room Board',
+  services: 'Bảng giá dịch vụ',
+  'service-catalog': 'Bảng giá dịch vụ',
   bookings: 'Bookings',
   payments: 'Payments',
   reviews: 'Reviews',

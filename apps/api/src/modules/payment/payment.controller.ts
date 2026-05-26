@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, UseGuards, Req, HttpCode, HttpStatus, Get, Param, Query, Res } from '@nestjs/common';
+import { Controller, Post, Body, Headers, UnauthorizedException, UseGuards, Req, HttpCode, HttpStatus, Get, Param, Query, Res, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader, ApiQuery } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
@@ -8,16 +8,44 @@ import { ReconciliationService } from './reconciliation.service';
 import { CreatePaymentIntentDto, PaymentWebhookDto } from './dto/payment.dto';
 import { JwtAuthGuard, Auth } from '../auth/guards/jwt-auth.guard';
 import { UserRole } from '../auth/entities/user.entity';
+import { BookingConfirmationService } from '../booking/booking-confirmation.service';
 
 @ApiTags('Payments')
 @Controller()
 export class PaymentController {
+  private readonly logger = new Logger(PaymentController.name);
+
   constructor(
     private readonly paymentService: PaymentService,
     private readonly vnpayService: VnpayService,
     private readonly invoiceService: InvoiceService,
     private readonly reconciliationService: ReconciliationService,
+    private readonly bookingConfirmationService: BookingConfirmationService,
   ) {}
+
+  private async finalizeVnpaySuccess(
+    invoiceId: string,
+    vnpayTransactionId: string,
+    res: Response,
+  ) {
+    const invoice = await this.invoiceService.confirmVnpayPayment(
+      invoiceId,
+      vnpayTransactionId,
+    );
+
+    this.bookingConfirmationService
+      .sendPaymentSuccessEmail(invoice.id)
+      .catch((err) =>
+        this.logger.error(`Confirmation email failed: ${err.message}`),
+      );
+
+    return res.redirect(
+      this.vnpayService.buildClientRedirect({
+        payment: 'success',
+        bookingId: invoice.bookingId,
+      }),
+    );
+  }
 
   @Get('reconciliation-tickets')
   @Auth(UserRole.SUPER_ADMIN, UserRole.FINANCE_READ)
@@ -117,12 +145,46 @@ export class PaymentController {
     }
 
     try {
-      await this.invoiceService.confirmVnpayPayment(
+      return await this.finalizeVnpaySuccess(
         result.invoiceId,
         result.vnpayTransactionId,
+        res,
       );
+    } catch {
       return res.redirect(
-        this.vnpayService.buildClientRedirect({ payment: 'success' }),
+        this.vnpayService.buildClientRedirect({
+          payment: 'error',
+          reason: 'server_error',
+        }),
+      );
+    }
+  }
+
+  @Get('payment/vnpay/mock-pay')
+  @ApiOperation({
+    summary: 'Dev mock VNPay — xác nhận thanh toán không qua cổng VNPay',
+  })
+  async vnpayMockPay(
+    @Query('invoiceId') invoiceId: string,
+    @Res() res: Response,
+  ) {
+    if (!this.vnpayService.isMockMode()) {
+      return res.status(404).send('VNPay mock is disabled');
+    }
+    if (!invoiceId) {
+      return res.redirect(
+        this.vnpayService.buildClientRedirect({
+          payment: 'error',
+          reason: 'missing_invoice',
+        }),
+      );
+    }
+
+    try {
+      return await this.finalizeVnpaySuccess(
+        invoiceId,
+        `MOCK-${Date.now()}`,
+        res,
       );
     } catch {
       return res.redirect(

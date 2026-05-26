@@ -85,7 +85,23 @@ export class GuestService {
     return this.guestRepo.findOne({ where: { phone } });
   }
 
+  async recordIdDocument(
+    guestId: string,
+    idDocumentType: 'CCCD' | 'PASSPORT',
+    idDocumentNumber: string,
+  ): Promise<Guest> {
+    const guest = await this.getGuest(guestId);
+    const normalized = idDocumentNumber.replace(/\s+/g, '').toUpperCase();
+    guest.idDocumentType = idDocumentType;
+    guest.cccdHash = this.hashIdDocument(normalized);
+    return this.guestRepo.save(guest);
+  }
+
   private hashCccd(cccd: string): string {
-    return crypto.createHash('sha256').update(cccd).digest('hex');
+    return this.hashIdDocument(cccd);
+  }
+
+  private hashIdDocument(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex');
   }
 }

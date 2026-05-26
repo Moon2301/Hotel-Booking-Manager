@@ -5,9 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Invoice, PaymentMethod } from './entities/invoice.entity';
+import { Invoice, InvoiceType, PaymentMethod } from './entities/invoice.entity';
 import { Booking, PaymentStatus } from './entities/booking.entity';
 import { AuditLog } from '../auth/entities/audit-log.entity';
+import { BookingService } from './booking.service';
 
 @Injectable()
 export class InvoiceService {
@@ -15,12 +16,18 @@ export class InvoiceService {
     @InjectRepository(Invoice) private invoiceRepo: Repository<Invoice>,
     @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
+    private readonly bookingService: BookingService,
   ) {}
 
-  async createInvoice(bookingId: string, totalAmount: number): Promise<Invoice> {
+  async createInvoice(
+    bookingId: string,
+    totalAmount: number,
+    invoiceType: InvoiceType = InvoiceType.DEPOSIT,
+  ): Promise<Invoice> {
     const invoice = this.invoiceRepo.create({
       bookingId,
       totalAmount,
+      invoiceType,
       paymentStatus: PaymentStatus.PENDING,
     });
     return this.invoiceRepo.save(invoice);
@@ -46,6 +53,17 @@ export class InvoiceService {
     return this.invoiceRepo.findOne({
       where: { bookingId },
       relations: ['booking'],
+    });
+  }
+
+  async getInvoiceByBookingAndType(
+    bookingId: string,
+    invoiceType: InvoiceType,
+  ): Promise<Invoice | null> {
+    return this.invoiceRepo.findOne({
+      where: { bookingId, invoiceType },
+      relations: ['booking'],
+      order: { issuedAt: 'DESC' } as any,
     });
   }
 
@@ -79,6 +97,7 @@ export class InvoiceService {
     if (booking) {
       booking.paymentStatus = PaymentStatus.PAID;
       await this.bookingRepo.save(booking);
+      await this.bookingService.assignRoomOnPayment(booking.id, actorId);
     }
 
     // Audit log
@@ -121,6 +140,7 @@ export class InvoiceService {
     if (booking) {
       booking.paymentStatus = PaymentStatus.PAID;
       await this.bookingRepo.save(booking);
+      await this.bookingService.assignRoomOnPayment(booking.id, 'vnpay');
     }
 
     return saved;

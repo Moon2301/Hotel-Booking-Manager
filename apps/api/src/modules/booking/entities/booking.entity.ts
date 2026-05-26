@@ -8,6 +8,7 @@ import { RoomType } from '../../property/entities/room-type.entity';
 import { Guest } from '../../guest/entities/guest.entity';
 import { Invoice } from './invoice.entity';
 import { Task } from '../../task/entities/task.entity';
+import { BookingOccupant } from './booking-occupant.entity';
 
 export enum BookingStatus {
   HOLD = 'HOLD',
@@ -50,6 +51,9 @@ export class Booking {
 
   @OneToMany(() => Task, (task) => task.booking)
   tasks: Task[];
+
+  @OneToMany(() => BookingOccupant, (o) => o.booking)
+  occupants: BookingOccupant[];
 
   @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.HOLD }) status: BookingStatus;
   

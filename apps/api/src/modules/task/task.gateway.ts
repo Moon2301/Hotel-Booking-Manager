@@ -42,7 +42,18 @@ export class TaskGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Attach user information to client
       client.data.user = payload;
-      this.logger.log(`Client connected to /tasks: ${client.id} (User: ${payload.sub}, Type: ${payload.type || 'staff'})`);
+
+      if (payload.type === 'guest') {
+        if (payload.bookingId) {
+          client.join(`booking_${payload.bookingId}`);
+        }
+      } else {
+        client.join('staff');
+      }
+
+      this.logger.log(
+        `Client connected to /tasks: ${client.id} (User: ${payload.sub}, Type: ${payload.type || 'staff'})`,
+      );
     } catch (error) {
       this.logger.error(`Connection to /tasks rejected: ${error.message}`);
       client.disconnect();
@@ -90,18 +101,30 @@ export class TaskGateway implements OnGatewayConnection, OnGatewayDisconnect {
         staffReport: task.staffReport,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
+        booking: task.booking
+          ? {
+              id: task.booking.id,
+              propertyId: task.booking.propertyId,
+              roomId: task.booking.roomId,
+              room: task.booking.room
+                ? { roomNumber: task.booking.room.roomNumber }
+                : undefined,
+            }
+          : undefined,
       },
     };
 
-    // Emit to guest room
+    // Guest portal (My Stay)
     this.server.to(`booking_${task.bookingId}`).emit('task_changed', payload);
 
-    // Emit to property room if task has booking populated (to know property ID)
+    // All connected staff (admin dashboard)
+    this.server.to('staff').emit('task_changed', payload);
+
+    // Property-scoped staff (optional fine-grained filter)
     if (task.booking?.propertyId) {
-      this.server.to(`property_${task.booking.propertyId}`).emit('task_changed', payload);
-    } else {
-      // Broadcast generally as fallback if property is not loaded
-      this.server.emit('task_changed', payload);
+      this.server
+        .to(`property_${task.booking.propertyId}`)
+        .emit('task_changed', payload);
     }
   }
 }

@@ -39,6 +39,12 @@ CLIENT_PAYMENT_PATH=${CLIENT_PAYMENT_PATH:-/my-stay}
 VNP_TMNCODE=${VNP_TMNCODE:-R4923J2J}
 VNP_HASHSECRET=${VNP_HASHSECRET:-P68JKLG8376RKRTBPWCKDD7XR3OYF4TZ}
 VNP_PAYMENT_URL=${VNP_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+VNP_MOCK=${VNP_MOCK:-true}
+BOOKING_QR_SECRET=${BOOKING_QR_SECRET:-mango_dev_booking_qr_secret_change_me}
+MAIL_HOST=${MAIL_HOST:-}
+MAIL_PORT=${MAIL_PORT:-587}
+MAIL_USER=${MAIL_USER:-}
+MAIL_PASS=${MAIL_PASS:-}
 CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3001,http://localhost:8080,http://localhost:3000}
 EOF
 fi
@@ -57,6 +63,13 @@ echo "==> Running database migrations..."
 echo "==> Seeding database (skips if data already exists)..."
 (cd apps/api && pnpm exec ts-node seed-runner.ts) || echo "    Seed skipped (may already exist)."
 
+echo "==> Preparing Next.js admin (.next cache in Docker volume)..."
+mkdir -p /app/apps/web-admin/.next
+# Bind mounts on Windows often miss new app/ routes; clear dev cache so routes rescan on boot
+rm -rf /app/apps/web-admin/.next/cache /app/apps/web-admin/.next/server 2>/dev/null || true
+
 echo "==> Starting dev servers (API :3000, Admin :3001, Client :8080)..."
+export WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}"
+export CHOKIDAR_USEPOLLING="${CHOKIDAR_USEPOLLING:-true}"
 export TURBO_UI=stream
 exec pnpm dev

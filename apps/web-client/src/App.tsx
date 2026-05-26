@@ -1,5 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { Routes, Route, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Link,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
+import { GuestPortalEntry } from './components/guest/GuestPortalEntry';
+import { ThemeToggle } from './components/ThemeToggle';
+import { pageBg, panelCard } from './lib/theme-classes';
+import { HomePage } from './pages/HomePage';
+import { BookPage } from './pages/BookPage';
+import { BookingConfirmationPage } from './pages/BookingConfirmationPage';
+import { RoomsPage } from './pages/RoomsPage';
+import { ServicesPage } from './pages/ServicesPage';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
@@ -18,7 +33,7 @@ import {
   Receipt,
   FileText,
   MessageSquare,
-  Timer
+  Hexagon,
 } from 'lucide-react';
 
 interface Guest {
@@ -26,93 +41,6 @@ interface Guest {
   fullName: string;
   email: string;
   phone: string;
-}
-
-function BookingDemo({ token, propertyId }: { token: string, propertyId: string }) {
-  const [hold, setHold] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState('');
-
-  useEffect(() => {
-    if (!hold?.expiresAt) return;
-    const update = () => {
-      const diff = new Date(hold.expiresAt).getTime() - Date.now();
-      if (diff <= 0) {
-        setTimeLeft('Đã hết hạn');
-        setHold(null); // hold expired
-        return;
-      }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setTimeLeft(`${m} phút ${s} giây`);
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [hold]);
-
-  const handleCreateHold = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/bookings/hold', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          propertyId,
-          // Sending dummy data for demo
-          roomTypeId: 'a-dummy-room-type-id-would-be-here', 
-          nights: [new Date().toISOString().split('T')[0]]
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setHold(data);
-      } else {
-        alert(data.message || 'Hết phòng trống (ROOM_UNAVAILABLE).');
-      }
-    } catch (e) {
-      alert('Lỗi tạo hold');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm max-w-2xl mx-auto text-center space-y-6">
-      <h2 className="text-xl font-bold">Thử nghiệm Đặt phòng trực tuyến</h2>
-      <p className="text-slate-500 text-sm">Giả lập việc khách hàng chọn phòng và nhận được hold đếm ngược để thanh toán.</p>
-      
-      {!hold ? (
-        <button 
-          onClick={handleCreateHold} 
-          disabled={loading}
-          className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-md flex items-center justify-center gap-2 mx-auto"
-        >
-          {loading ? 'Đang giữ chỗ...' : 'Giữ chỗ phòng Deluxe'}
-        </button>
-      ) : (
-        <div className="bg-amber-50 border border-amber-200 p-6 rounded-xl space-y-4">
-          <Timer className="h-10 w-10 text-amber-500 mx-auto animate-pulse" />
-          <h3 className="text-lg font-bold text-slate-800">Phòng của bạn đang được giữ</h3>
-          <p className="text-sm text-slate-600">
-            Vui lòng hoàn tất thanh toán trong khoảng thời gian quy định để xác nhận đặt phòng.
-          </p>
-          <div className="bg-white px-6 py-4 rounded-lg inline-block shadow-sm">
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">Thời gian còn lại</p>
-            <p className="text-2xl font-black text-amber-600">{timeLeft}</p>
-          </div>
-          <div className="pt-4">
-            <button className="bg-amber-500 text-white px-8 py-3 rounded-xl font-bold hover:bg-amber-600 shadow-md">
-              Tiến hành Thanh toán
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 interface Booking {
@@ -125,6 +53,8 @@ interface Booking {
   checkOut: string;
   paymentStatus: string;
   totalAmount: number | null;
+  checkinToken?: string | null;
+  checkinTokenExpiresAt?: string | null;
 }
 
 interface Invoice {
@@ -149,101 +79,7 @@ interface Task {
   updatedAt: string;
 }
 
-function Home() {
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-black tracking-tight text-emerald-600">MANGO HOTEL</span>
-          </div>
-          <nav className="hidden md:flex gap-8">
-            <Link to="/" className="text-sm font-semibold text-slate-600 hover:text-emerald-600 transition-colors">Trang chủ</Link>
-            <Link to="/my-stay" className="text-sm font-semibold text-slate-600 hover:text-emerald-600 transition-colors">My Stay</Link>
-          </nav>
-          <Link to="/my-stay" className="bg-emerald-600 text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-emerald-700 shadow-md shadow-emerald-100 transition-all">
-            Xem Đặt Phòng của tôi
-          </Link>
-        </div>
-      </header>
-
-      <main>
-        {/* Hero Section */}
-        <div className="relative h-[650px] bg-slate-950 flex items-center justify-center">
-          <div className="absolute inset-0 overflow-hidden">
-            <img 
-              src="https://images.unsplash.com/photo-1542314831-c6a4d27ce66f?auto=format&fit=crop&q=80" 
-              alt="Hotel exterior" 
-              className="w-full h-full object-cover opacity-50 scale-105 transition-transform duration-1000"
-            />
-          </div>
-          <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-            <span className="inline-block bg-emerald-500/20 text-emerald-400 text-xs font-bold tracking-widest uppercase px-3 py-1 rounded-full mb-4 border border-emerald-400/30">
-              Welcome to Luxury
-            </span>
-            <h1 className="text-4xl md:text-6xl font-extrabold text-white mb-6 tracking-tight leading-tight">
-              Trải nghiệm nghỉ dưỡng đẳng cấp quốc tế
-            </h1>
-            <p className="text-lg md:text-xl text-slate-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-              Khám phá không gian sang trọng tinh tế và dịch vụ phòng trực tuyến 24/7 tuyệt vời tại Mango Hotel.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/my-stay" className="bg-emerald-600 text-white px-8 py-4 rounded-full font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-900/30 transition-all text-center">
-                Đăng nhập My Stay
-              </Link>
-              <a href="#about" className="border border-white/30 text-white hover:bg-white/10 backdrop-blur-sm px-8 py-4 rounded-full font-bold transition-all text-center">
-                Tìm hiểu thêm
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Info Section */}
-        <div id="about" className="py-24 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">
-              Cổng thông tin My Stay trực quan
-            </h2>
-            <p className="text-slate-500 max-w-2xl mx-auto mb-16 text-lg">
-              Giúp bạn quản lý kỳ nghỉ của mình một cách thông minh từ đặt phòng, thanh toán, đến yêu cầu các dịch vụ tiện ích ngay tại phòng của mình.
-            </p>
-            
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm text-left">
-                <div className="h-12 w-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 mb-6 shadow-inner">
-                  <Calendar className="h-6 w-6" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Thông tin lưu trú</h3>
-                <p className="text-slate-500">Xem nhanh mã phòng nghỉ, thời gian check-in, check-out và quản lý thông tin khách trú.</p>
-              </div>
-
-              <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm text-left">
-                <div className="h-12 w-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 mb-6 shadow-inner">
-                  <CreditCard className="h-6 w-6" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Thanh toán an toàn</h3>
-                <p className="text-slate-500">Xem hoá đơn và thanh toán nhanh chóng, an toàn qua cổng VNPay với chữ ký số bảo mật.</p>
-              </div>
-
-              <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 shadow-sm text-left">
-                <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 mb-6 shadow-inner">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Dịch vụ phòng 24/7</h3>
-                <p className="text-slate-500">Yêu cầu dọn phòng, giặt là, gọi món hoặc đặt xe. Trạng thái yêu cầu được cập nhật real-time.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-      
-      <footer className="bg-slate-900 text-slate-400 py-16 text-center border-t border-slate-800">
-        <p className="text-sm font-semibold tracking-wider text-slate-500 uppercase mb-4">Mango Hotel & Resort</p>
-        <p className="text-xs">&copy; 2026 Mango Hotel. All rights reserved. Powered by NestJS & React.</p>
-      </footer>
-    </div>
-  );
-}
+type StayTab = 'stay' | 'invoice' | 'service';
 
 function MyStay() {
   const navigate = useNavigate();
@@ -261,7 +97,7 @@ function MyStay() {
   // Dashboard details state
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeTab, setActiveTab] = useState<'stay' | 'invoice' | 'service'>('stay');
+  const [activeTab, setActiveTab] = useState<StayTab>('stay');
   
   // Loading & Error states
   const [authLoading, setAuthLoading] = useState(false);
@@ -312,6 +148,14 @@ function MyStay() {
       setInvoice(invoiceData);
     }
   };
+
+  // Deep link: /my-stay?tab=invoice|service|stay
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'stay' || tab === 'invoice' || tab === 'service') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   // Handle VNPay redirect query parameters (?payment=success|failed|error)
   useEffect(() => {
@@ -564,7 +408,10 @@ function MyStay() {
           return [result, ...prev];
         });
       } else {
-        alert(`Lỗi: ${result.message || 'Không thể tạo yêu cầu'}`);
+        const msg = Array.isArray(result.message)
+          ? result.message.join(', ')
+          : result.message || 'Không thể tạo yêu cầu';
+        alert(`Lỗi: ${msg}`);
       }
     } catch (err) {
       alert('Lỗi kết nối máy chủ.');
@@ -573,78 +420,49 @@ function MyStay() {
     }
   };
 
-  // If NOT authenticated, show login form
+  const requestedTab = searchParams.get('tab');
+
+  useEffect(() => {
+    if (token && guest && booking) return;
+    if (requestedTab === 'book') {
+      navigate('/book', { replace: true });
+    }
+  }, [requestedTab, token, guest, booking, navigate]);
+
   if (!token || !guest || !booking) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200/80 max-w-md w-full">
-          <div className="text-center mb-8">
-            <span className="text-xs font-bold text-emerald-600 tracking-wider uppercase bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-              Mango Guest Portal
-            </span>
-            <h1 className="text-3xl font-black text-slate-950 mt-4 mb-2 tracking-tight">CỔNG LƯU TRÚ</h1>
-            <p className="text-slate-500 text-sm">Nhập thông tin đặt phòng để truy cập dịch vụ</p>
-          </div>
-          
-          {authError && (
-            <div className="bg-rose-50 border border-rose-100 text-rose-600 px-4 py-3 rounded-lg text-sm mb-6 flex items-start gap-2 animate-pulse">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          <form className="space-y-5" onSubmit={handleLogin}>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Mã Đặt Phòng (Booking ID)</label>
-              <input 
-                type="text" 
-                className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-mono"
-                placeholder="VD: booking_uuid_..."
-                value={bookingIdInput}
-                onChange={(e) => setBookingIdInput(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Số điện thoại khách hàng</label>
-              <input 
-                type="tel" 
-                className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-                placeholder="Số đt lúc đăng ký phòng"
-                value={phoneInput}
-                onChange={(e) => setPhoneInput(e.target.value)}
-                required
-              />
-            </div>
-            <button 
-              type="submit" 
-              className="w-full bg-emerald-600 text-white py-3.5 px-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 hover:shadow-none transition-all duration-300 flex items-center justify-center gap-2"
-              disabled={authLoading}
-            >
-              {authLoading ? 'Đang xác thực...' : 'Vào cổng thông tin'}
-            </button>
-          </form>
-          
-          <div className="mt-8 text-center border-t border-slate-100 pt-6">
-            <Link to="/" className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors">&larr; Trở về Trang chủ</Link>
-          </div>
-        </div>
-      </div>
+      <GuestPortalEntry
+        bookingIdInput={bookingIdInput}
+        phoneInput={phoneInput}
+        authLoading={authLoading}
+        authError={authError}
+        requestedTab={requestedTab}
+        onBookingIdChange={setBookingIdInput}
+        onPhoneChange={setPhoneInput}
+        onSubmit={handleLogin}
+      />
     );
   }
 
+  const tabBtn = (tab: StayTab) =>
+    `py-4 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+      activeTab === tab
+        ? 'border-mango-accent text-mango-accent'
+        : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-white/60 dark:hover:text-white'
+    }`;
+
   // Authenticated Guest Dashboard
   return (
-    <div className="min-h-screen bg-slate-50 relative">
+    <div className={`relative ${pageBg}`}>
       {/* Toast Notifications Container */}
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
         {toasts.map(t => (
-          <div key={t.id} className="pointer-events-auto w-72 bg-white border border-slate-200 shadow-xl rounded-xl p-4 transition-all duration-300 transform translate-y-0 opacity-100">
+          <div key={t.id} className={`pointer-events-auto w-72 p-4 shadow-xl transition-all duration-300 ${panelCard}`}>
             <div className="flex items-start gap-3">
-              <div className="text-emerald-500 mt-0.5"><MessageSquare className="h-5 w-5" /></div>
+              <div className="mt-0.5 text-mango-accent"><MessageSquare className="h-5 w-5" /></div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900">{t.title}</h4>
-                <p className="text-xs text-slate-600 mt-1">{t.message}</p>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">{t.title}</h4>
+                <p className="mt-1 text-xs text-slate-600 dark:text-white/70">{t.message}</p>
               </div>
             </div>
           </div>
@@ -668,22 +486,37 @@ function MyStay() {
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <span className="text-xl font-black tracking-tight text-emerald-600">MANGO PORTAL</span>
-            <div className="h-6 w-[1px] bg-slate-200 hidden sm:block"></div>
-            <div className="flex items-center gap-2 text-slate-700">
-              <User className="h-5 w-5 text-slate-400" />
-              <span className="font-bold text-sm">{guest.fullName}</span>
-              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-mono">BKG ID: {booking.id.substring(0,8)}...</span>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-mango-navy-950/90">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-4 sm:flex-row sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center gap-4">
+            <Link to="/" className="flex items-center gap-2">
+              <Hexagon className="h-7 w-7 text-mango-accent" />
+              <span className="text-lg font-bold text-slate-900 dark:text-white">
+                Mango<span className="font-normal text-slate-600 dark:text-white/70"> Hotel</span>
+              </span>
+            </Link>
+            <div className="hidden h-6 w-px bg-slate-300 dark:bg-white/15 sm:block" />
+            <div className="flex items-center gap-2 text-slate-800 dark:text-white/85">
+              <User className="h-5 w-5 text-mango-accent" />
+              <span className="text-sm font-bold">{guest.fullName}</span>
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 font-mono text-xs text-slate-600 dark:bg-white/10 dark:text-white/50">
+                {booking.id.substring(0, 8)}…
+              </span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
-            <button 
+            <ThemeToggle />
+            <Link
+              to="/book"
+              className="hidden rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-mango-accent hover:text-mango-accent dark:border-white/20 dark:text-white/80 sm:inline-block"
+            >
+              Đặt phòng mới
+            </Link>
+            <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center gap-2 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 px-4 py-2 rounded-full text-sm font-semibold transition-all border border-slate-200"
+              className="flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-rose-400/50 hover:bg-rose-50 hover:text-rose-600 dark:border-white/15 dark:bg-white/5 dark:text-white/80 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
             >
               <LogOut className="h-4 w-4" />
               Đăng xuất
@@ -692,81 +525,54 @@ function MyStay() {
         </div>
       </header>
 
-      {/* Main Grid */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-200 mb-8 overflow-x-auto gap-2">
-          <button
-            onClick={() => setActiveTab('stay')}
-            className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === 'stay' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
+      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <p className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-mango-accent">
+          My Stay
+        </p>
+
+        <div className="mb-8 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-white/10">
+          <button type="button" onClick={() => setActiveTab('stay')} className={tabBtn('stay')}>
             <Calendar className="h-5 w-5" />
             Kỳ nghỉ của tôi
           </button>
-          <button
-            onClick={() => setActiveTab('invoice')}
-            className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === 'invoice' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
+          <button type="button" onClick={() => setActiveTab('invoice')} className={tabBtn('invoice')}>
             <Receipt className="h-5 w-5" />
             Hoá đơn & Thanh toán
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('service')}
-            className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 relative ${
-              activeTab === 'service' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
+            className={`${tabBtn('service')} relative`}
           >
             <Coffee className="h-5 w-5" />
             Dịch vụ phòng
-            {tasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length > 0 && (
-              <span className="absolute top-2 right-1 h-2 w-2 rounded-full bg-rose-500 animate-ping"></span>
+            {tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length > 0 && (
+              <span className="absolute right-0 top-2 h-2 w-2 animate-ping rounded-full bg-rose-500" />
             )}
-          </button>
-          <button
-            onClick={() => setActiveTab('book')}
-            className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === 'book' 
-                ? 'border-emerald-600 text-emerald-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles className="h-5 w-5" />
-            Đặt phòng trực tuyến (Demo)
           </button>
         </div>
 
-        {/* Tab Contents */}
         {dataLoading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="h-10 w-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 mt-4 text-sm font-semibold">Đang cập nhật thông tin...</p>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-mango-accent" />
+            <p className="mt-4 text-sm font-semibold text-slate-500 dark:text-white/60">Đang cập nhật thông tin...</p>
           </div>
         ) : (
           <>
             {activeTab === 'stay' && (
               <div className="grid lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+                <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-gradient-to-br dark:from-mango-navy-900/80 dark:to-mango-navy-950/80 dark:shadow-xl dark:backdrop-blur space-y-6">
                   <div>
-                    <h2 className="text-xl font-extrabold text-slate-900">Chi tiết đặt phòng</h2>
-                    <p className="text-slate-500 text-sm">Thông tin tổng quan về lưu trú của bạn</p>
+                    <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Chi tiết đặt phòng</h2>
+                    <p className="text-sm text-slate-600 dark:text-white/60">Thông tin tổng quan về lưu trú của bạn</p>
                   </div>
                   
                   <div className="grid sm:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
-                    <div className="bg-slate-50 p-4 rounded-xl">
+                    <div className="rounded-xl border border-slate-200 bg-slate-100 p-4 dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Mã Phòng</p>
                       <p className="text-lg font-black text-slate-900">{booking.roomId ? `Phòng ${booking.roomId}` : 'Chưa xếp phòng (Đang xử lý)'}</p>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl">
+                    <div className="rounded-xl border border-slate-200 bg-slate-100 p-4 dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Trạng thái đặt phòng</p>
                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mt-1 ${
                         booking.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
@@ -775,14 +581,14 @@ function MyStay() {
                         {booking.status}
                       </span>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl flex items-center gap-3">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 flex items-center gap-3">
                       <Clock className="h-8 w-8 text-slate-400 shrink-0" />
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">Check-in</p>
                         <p className="text-sm font-bold text-slate-800">{new Date(booking.checkIn).toLocaleDateString('vi-VN')}</p>
                       </div>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl flex items-center gap-3">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 flex items-center gap-3">
                       <Clock className="h-8 w-8 text-slate-400 shrink-0" />
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">Check-out</p>
@@ -794,11 +600,23 @@ function MyStay() {
 
                 {/* Sidebar area: Check-in QR */}
                 <div className="space-y-6">
+                  {booking.status === 'CONFIRMED' && (
+                    <div className="rounded-2xl border border-amber-400/40 bg-amber-50 p-5 text-left dark:border-amber-500/30 dark:bg-amber-500/10">
+                      <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">
+                        Chưa nhận phòng
+                      </h3>
+                      <p className="mt-2 text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
+                        Mang <strong>CCCD hoặc Hộ chiếu</strong> đến quầy lễ tân để check-in và
+                        đăng ký tạm trú. Sau khi lễ tân xác nhận, bạn mới gửi được yêu cầu dịch vụ
+                        phòng trên My Stay.
+                      </p>
+                    </div>
+                  )}
                   {booking.status === 'CONFIRMED' && booking.checkinToken && (
-                    <div className="bg-white rounded-2xl p-6 border border-emerald-200 shadow-sm text-center">
-                      <h3 className="text-lg font-bold text-slate-900 mb-2">Check-in Điện tử</h3>
-                      <p className="text-xs text-slate-500 mb-4">
-                        Xuất trình mã này tại quầy lễ tân hoặc Kiosk để nhận phòng nhanh.
+                    <div className="rounded-2xl border border-mango-accent/30 bg-gradient-to-br from-mango-navy-900/80 to-mango-navy-950/80 p-6 text-center shadow-xl backdrop-blur">
+                      <h3 className="mb-2 text-lg font-bold text-slate-900 dark:text-white">Mã tham chiếu đặt phòng</h3>
+                      <p className="mb-4 text-xs text-slate-600 dark:text-white/60">
+                        Xuất trình mã QR tại quầy (kèm CCCD/Hộ chiếu) để lễ tân tra cứu booking.
                       </p>
                       <div className="bg-white p-4 inline-block rounded-xl border border-slate-200 shadow-sm mx-auto">
                         <QRCodeCanvas value={booking.checkinToken} size={160} level="H" />
@@ -817,29 +635,30 @@ function MyStay() {
                     </div>
                   )}
                   
-                  <div className="bg-gradient-to-br from-slate-900 to-emerald-950 rounded-2xl p-6 text-white shadow-xl flex flex-col justify-between h-[300px]">
+                  <div className="flex h-[300px] flex-col justify-between rounded-2xl border border-mango-accent/30 bg-gradient-to-br from-mango-navy-900 to-mango-navy-950 p-6 text-white shadow-xl">
                   <div>
-                    <h3 className="text-2xl font-black tracking-tight mb-2">Grand Luxury Resort</h3>
-                    <p className="text-slate-300 text-xs leading-relaxed">123 Vo Nguyen Giap, Da Nang, Viet Nam</p>
+                    <h3 className="mb-2 text-2xl font-black tracking-tight">Mango Hotel & Resort</h3>
+                    <p className="text-xs leading-relaxed text-white/70">123 Võ Nguyên Giáp, Đà Nẵng</p>
                   </div>
                   <div className="border-t border-white/10 pt-4">
-                    <p className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Hỗ trợ khách hàng</p>
-                    <p className="text-sm font-semibold mt-1">Đường dây nóng: (0236) 3888 999</p>
-                    <p className="text-xs text-slate-400">Chúng tôi hỗ trợ bạn mọi lúc mọi nơi trong kỳ nghỉ.</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-mango-accent">Hỗ trợ khách hàng</p>
+                    <p className="mt-1 text-sm font-semibold">Hotline: (0236) 3888 999</p>
+                    <p className="text-xs text-white/50">Chúng tôi hỗ trợ bạn mọi lúc trong kỳ nghỉ.</p>
                   </div>
+                </div>
                 </div>
               </div>
             )}
 
             {activeTab === 'invoice' && (
               <div className="mx-auto max-w-3xl space-y-6">
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-gradient-to-br dark:from-mango-navy-900/80 dark:to-mango-navy-950/80 dark:shadow-xl dark:backdrop-blur">
                   <div className="mb-6 flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h2 className="text-xl font-extrabold text-slate-900">
+                      <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
                         Hoá đơn & Thanh toán
                       </h2>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-500 dark:text-white/60">
                         Thanh toán online qua VNPay Sandbox — sau khi hoàn tất bạn sẽ được
                         chuyển về trang này.
                       </p>
@@ -888,8 +707,8 @@ function MyStay() {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-6">
-                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                      <div className="rounded-2xl border-2 border-dashed border-mango-accent/40 bg-mango-accent/10 p-6">
+                        <p className="text-xs font-bold uppercase tracking-wider text-mango-accent">
                           Số tiền cần thanh toán
                         </p>
                         <p className="mt-2 text-4xl font-black text-slate-900">
@@ -910,7 +729,7 @@ function MyStay() {
                               type="button"
                               onClick={handlePayVNPay}
                               disabled={payLoading}
-                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                              className="flex w-full items-center justify-center gap-2 rounded-full bg-mango-accent px-6 py-4 text-base font-bold text-mango-navy-950 shadow-lg shadow-mango-accent/20 transition-all hover:bg-mango-accent-light disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                             >
                               <CreditCard className="h-5 w-5" />
                               {payLoading
@@ -953,11 +772,25 @@ function MyStay() {
 
             {activeTab === 'service' && (
               <div className="grid lg:grid-cols-3 gap-8">
+                {booking.status !== 'CHECKED_IN' ? (
+                  <div className={`lg:col-span-3 ${panelCard} p-8 text-center`}>
+                    <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-500" />
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                      Dịch vụ phòng chưa mở
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-md text-sm text-slate-600 dark:text-white/60">
+                      {booking.status === 'CONFIRMED'
+                        ? 'Bạn cần check-in tại quầy lễ tân (CCCD/Hộ chiếu) trước khi gửi yêu cầu dọn phòng, đồ ăn, xe…'
+                        : 'Yêu cầu dịch vụ chỉ khả dụng trong thời gian đang lưu trú.'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
                 {/* Request Form */}
-                <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+                <div className={`${panelCard} space-y-6 p-6`}>
                   <div>
-                    <h2 className="text-lg font-extrabold text-slate-900">Gửi yêu cầu dịch vụ</h2>
-                    <p className="text-slate-500 text-sm">Chúng tôi phục vụ nhanh chóng và trực tiếp đến phòng bạn</p>
+                    <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Gửi yêu cầu dịch vụ</h2>
+                    <p className="text-sm text-slate-600 dark:text-white/60">Chúng tôi phục vụ nhanh chóng và trực tiếp đến phòng bạn</p>
                   </div>
 
                   {serviceSuccess && (
@@ -969,9 +802,9 @@ function MyStay() {
 
                   <form className="space-y-4" onSubmit={handleRequestService}>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Loại yêu cầu</label>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-mango-accent">Loại yêu cầu</label>
                       <select
-                        className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="field-select"
                         value={serviceType}
                         onChange={(e) => setServiceType(e.target.value as any)}
                       >
@@ -983,9 +816,9 @@ function MyStay() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Ghi chú chi tiết</label>
+                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-mango-accent">Ghi chú chi tiết</label>
                       <textarea
-                        className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+                        className="field-textarea"
                         placeholder="VD: Cần bổ sung 2 khăn tắm, dọn phòng vào lúc 14h..."
                         value={guestNote}
                         onChange={(e) => setGuestNote(e.target.value)}
@@ -996,7 +829,7 @@ function MyStay() {
                     <button
                       type="submit"
                       disabled={serviceLoading}
-                      className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shadow-md shadow-slate-200"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-mango-accent py-3 font-bold text-mango-navy-950 shadow-md transition hover:bg-mango-accent-light"
                     >
                       <Send className="h-4 w-4" />
                       {serviceLoading ? 'Đang gửi...' : 'Gửi yêu cầu ngay'}
@@ -1005,10 +838,10 @@ function MyStay() {
                 </div>
 
                 {/* History List */}
-                <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+                <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-gradient-to-br dark:from-mango-navy-900/80 dark:to-mango-navy-950/80 dark:shadow-xl dark:backdrop-blur space-y-6">
                   <div>
-                    <h2 className="text-lg font-extrabold text-slate-900">Lịch sử yêu cầu dịch vụ</h2>
-                    <p className="text-slate-500 text-sm">Theo dõi tiến độ xử lý thời gian thực</p>
+                    <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Lịch sử yêu cầu dịch vụ</h2>
+                    <p className="text-sm text-slate-600 dark:text-white/60">Theo dõi tiến độ xử lý thời gian thực</p>
                   </div>
 
                   {tasks.length === 0 ? (
@@ -1062,10 +895,11 @@ function MyStay() {
                     </div>
                   )}
                 </div>
+                </>
+                )}
               </div>
             )}
             
-            {activeTab === 'book' && <BookingDemo token={token} propertyId={booking.propertyId} />}
           </>
         )}
       </main>
@@ -1075,10 +909,23 @@ function MyStay() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/my-stay" element={<MyStay />} />
-      <Route path="*" element={<div className="min-h-screen flex items-center justify-center text-slate-500 font-bold">404 - Trang không tồn tại</div>} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/rooms" element={<RoomsPage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/book" element={<BookPage />} />
+        <Route path="/book/confirmation" element={<BookingConfirmationPage />} />
+        <Route path="/my-stay" element={<MyStay />} />
+        <Route
+          path="*"
+          element={
+            <div className="flex min-h-screen items-center justify-center font-bold text-slate-500">
+              404 - Trang không tồn tại
+            </div>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }

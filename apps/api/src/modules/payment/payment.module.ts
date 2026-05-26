@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentEvent } from './entities/payment-event.entity';
 import { PaymentTransaction } from './entities/payment-transaction.entity';
@@ -11,12 +11,27 @@ import { InvoiceService } from '../booking/invoice.service';
 import { PaymentController } from './payment.controller';
 import { ReconciliationTicket } from '../booking/entities/reconciliation-ticket.entity';
 import { ReconciliationService } from './reconciliation.service';
+import { BookingModule } from '../booking/booking.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PaymentEvent, PaymentTransaction, Booking, Invoice, AuditLog, ReconciliationTicket])],
+  imports: [
+    TypeOrmModule.forFeature([
+      PaymentEvent,
+      PaymentTransaction,
+      Booking,
+      Invoice,
+      AuditLog,
+      ReconciliationTicket,
+    ]),
+    forwardRef(() => BookingModule),
+  ],
   controllers: [PaymentController],
-  providers: [PaymentService, VnpayService, InvoiceService, ReconciliationService],
+  providers: [
+    PaymentService,
+    VnpayService,
+    InvoiceService,
+    ReconciliationService,
+  ],
   exports: [PaymentService, VnpayService, ReconciliationService],
 })
 export class PaymentModule {}
-

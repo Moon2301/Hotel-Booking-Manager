@@ -3,7 +3,59 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply antialiased bg-slate-100 text-slate-900 dark:bg-mango-navy-950 dark:text-white;
+  }
+}
+
+@layer components {
+  /* Ô nhập xám — rõ trên nền tối, dịu trên nền sáng */
+  .field-input,
+  .field-select,
+  .field-textarea {
+    @apply w-full rounded-xl border px-4 py-3 text-sm transition
+      focus:outline-none focus:ring-2 focus:ring-mango-accent;
+    @apply border-slate-300 bg-slate-200 text-slate-900
+      placeholder:text-slate-500;
+    @apply dark:border-slate-600 dark:bg-slate-700 dark:text-white
+      dark:placeholder:text-slate-400;
+  }
+
+  .field-input:disabled,
+  .field-select:disabled,
+  .field-textarea:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .field-textarea {
+    @apply min-h-[100px] resize-y;
+  }
+
+  .field-input[type='date'] {
+    @apply [color-scheme:light] dark:[color-scheme:dark];
+  }
+}
+
+@layer utilities {
+  .font-accent {
+    font-family: 'Dancing Script', cursive;
+  }
+
+  .animate-bounce-slow {
+    animation: bounce-slow 2s ease-in-out infinite;
+  }
+}
+
+@keyframes bounce-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
   }
 }
