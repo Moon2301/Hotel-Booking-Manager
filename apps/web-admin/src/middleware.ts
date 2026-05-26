@@ -87,11 +87,9 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Match all request paths except Next assets and favicon.
+     * Use broad _next exclusion so dev chunks (webpack, main-app.js) never hit auth middleware.
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

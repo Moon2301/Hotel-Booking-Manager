@@ -9,6 +9,7 @@ export interface VnpayConfig {
   apiPublicUrl: string;
   clientUrl: string;
   clientPaymentPath: string;
+  mock: boolean;
 }
 
 @Injectable()
@@ -39,7 +40,18 @@ export class VnpayService {
         'vnpay.clientPaymentPath',
         '/my-stay',
       ),
+      mock: this.configService.get<boolean>('vnpay.mock', false),
     };
+  }
+
+  isMockMode(): boolean {
+    return this.config.mock;
+  }
+
+  createMockPaymentUrl(invoiceId: string): string {
+    const base = this.config.apiPublicUrl.replace(/\/$/, '');
+    const prefix = this.configService.get<string>('apiPrefix', 'api/v1');
+    return `${base}/${prefix}/payment/vnpay/mock-pay?invoiceId=${encodeURIComponent(invoiceId)}`;
   }
 
   /**
@@ -55,9 +67,13 @@ export class VnpayService {
    */
   buildClientRedirect(params: Record<string, string>): string {
     const base = this.config.clientUrl.replace(/\/$/, '');
-    const path = this.config.clientPaymentPath.startsWith('/')
+    const defaultPath = this.config.clientPaymentPath.startsWith('/')
       ? this.config.clientPaymentPath
       : `/${this.config.clientPaymentPath}`;
+    const path =
+      params.bookingId != null
+        ? '/book/confirmation'
+        : defaultPath;
     const qs = new URLSearchParams(params).toString();
     return qs ? `${base}${path}?${qs}` : `${base}${path}`;
   }
@@ -66,6 +82,13 @@ export class VnpayService {
    * Generate VNPay payment URL for an invoice
    */
   createPaymentUrl(invoiceId: string, totalAmount: number, ipAddr: string): string {
+    if (this.config.mock) {
+      this.logger.log(
+        `VNPay mock mode — redirect to local mock-pay for invoice ${invoiceId}`,
+      );
+      return this.createMockPaymentUrl(invoiceId);
+    }
+
     const createDate = this.formatDate(new Date());
     const returnUrl = this.getVnpayReturnUrl();
 

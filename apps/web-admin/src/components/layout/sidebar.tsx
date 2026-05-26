@@ -18,6 +18,7 @@ import {
   ClipboardList,
   Receipt,
   UserSquare2,
+  Tags,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Properties', href: '/properties', icon: Building2, permission: 'properties:read' },
   { label: 'Room Board', href: '/room-board', icon: BedDouble, permission: 'rooms:status' },
+  { label: 'Bảng giá DV', href: '/service-catalog', icon: Tags, permission: 'properties:read' },
   { label: 'Bookings', href: '/bookings', icon: CalendarCheck, permission: 'bookings:read' },
   { label: 'Tasks', href: '/tasks', icon: ClipboardList, permission: 'tasks:read' },
   { label: 'Invoices', href: '/invoices', icon: Receipt, permission: 'invoices:read' },

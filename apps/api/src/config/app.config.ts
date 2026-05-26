@@ -26,6 +26,11 @@ export default () => ({
 
   booking: {
     holdTtlSeconds: parseInt(process.env.HOLD_TTL_SECONDS || '600', 10),
+    /** Secret for SHA-256 booking verification code & QR payload */
+    qrSecret:
+      process.env.BOOKING_QR_SECRET ||
+      process.env.BOOKING_HASH_SECRET ||
+      'change_me_booking_qr',
   },
 
   payment: {
@@ -64,5 +69,10 @@ export default () => ({
     /** Đường dẫn trên web client sau thanh toán */
     clientPaymentPath:
       process.env.CLIENT_PAYMENT_PATH || '/my-stay',
+    /** Dev: bỏ qua cổng VNPay (website chưa phê duyệt trên sandbox) */
+    mock:
+      process.env.VNP_MOCK === 'true' ||
+      (process.env.VNP_MOCK !== 'false' &&
+        (process.env.NODE_ENV || 'development') === 'development'),
   },
 });

@@ -24,6 +24,10 @@ export class Guest {
   @Column({ name: 'cccd_hash', nullable: true })
   cccdHash: string;
 
+  /** CCCD or PASSPORT — captured at front-desk check-in (đăng ký tạm trú) */
+  @Column({ name: 'id_document_type', nullable: true })
+  idDocumentType: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

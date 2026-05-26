@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { Toaster } from '@/components/ui/toaster';
-import { QueryProvider } from '@/providers/query-provider';
+import { ClientProviders } from '@/providers/client-providers';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin', 'latin-ext'], variable: '--font-sans' });
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-sans',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Hotel Admin Panel',
@@ -17,12 +20,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" className={`${inter.variable} scroll-smooth`}>
-      <body className="font-sans antialiased">
-        <QueryProvider>
-          {children}
-        </QueryProvider>
-        <Toaster />
+    <html lang="vi" className={inter.variable} suppressHydrationWarning>
+      <body
+        className={`${inter.className} min-h-screen font-sans antialiased`}
+        suppressHydrationWarning
+      >
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );

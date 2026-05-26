@@ -14,6 +14,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { BookingStatus } from '../entities/booking.entity';
+import { PaymentStatus } from '../entities/invoice.entity';
 
 export class CreateHoldDto {
   @ApiProperty()
@@ -65,6 +66,11 @@ export class ListBookingsQueryDto {
   @IsEnum(BookingStatus)
   status?: BookingStatus;
 
+  @ApiPropertyOptional({ enum: PaymentStatus })
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
@@ -104,11 +110,63 @@ export class CancelBookingDto {
   reason?: string;
 }
 
+export enum IdDocumentType {
+  CCCD = 'CCCD',
+  PASSPORT = 'PASSPORT',
+}
+
+export class AssignBookingRoomDto {
+  @ApiProperty({ description: 'Physical room to link to this paid booking' })
+  @IsUUID()
+  roomId: string;
+}
+
+export class CheckInOccupantDto {
+  @ApiProperty({ example: 'Nguyễn Văn A' })
+  @IsString()
+  @IsNotEmpty()
+  fullName: string;
+
+  @ApiProperty({ enum: IdDocumentType })
+  @IsEnum(IdDocumentType)
+  idDocumentType: IdDocumentType;
+
+  @ApiProperty({ description: 'Số CCCD hoặc hộ chiếu' })
+  @IsString()
+  @IsNotEmpty()
+  idDocumentNumber: string;
+
+  @ApiPropertyOptional({ description: 'Người đặt phòng chính (mặc định: người đầu tiên)' })
+  @IsOptional()
+  isPrimary?: boolean;
+}
+
 export class CheckInDto {
-  @ApiPropertyOptional({ description: 'Specific room ID to assign. Auto-assigned if omitted.' })
+  /** @deprecated Dùng `occupants` — giữ tương thích client cũ */
+  @ApiPropertyOptional({ enum: IdDocumentType })
+  @IsOptional()
+  @IsEnum(IdDocumentType)
+  idDocumentType?: IdDocumentType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  idDocumentNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Phòng RESERVED đã gán khi thanh toán. Có thể chọn phòng RESERVED khác cùng loại.',
+  })
   @IsOptional()
   @IsUUID()
   roomId?: string;
+
+  @ApiPropertyOptional({
+    type: [CheckInOccupantDto],
+    description: 'Danh sách người lưu trú (ít nhất 1). Một phiếu có thể nhiều người.',
+  })
+  @IsOptional()
+  occupants?: CheckInOccupantDto[];
 }
 
 export class CreateCancellationPolicyDto {

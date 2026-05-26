@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { usePropertySelection } from '@/providers/property-selection-provider';
 import { useQuery } from '@tanstack/react-query';
 import { get } from '@/lib/api-client';
 import { Property } from '@/types';
+import { formatDateOnlyVi } from '@/lib/format-date';
 import {
   Select,
   SelectContent,
@@ -29,7 +30,7 @@ import { format, subDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
 export default function ReportsPage() {
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const { selectedPropertyId, setSelectedPropertyId } = usePropertySelection();
   
   // Last 7 days default range
   const endDate = format(new Date(), 'yyyy-MM-dd');
@@ -182,7 +183,7 @@ export default function ReportsPage() {
                         {tickets.map(t => (
                           <tr key={t.id} className="border-b">
                             <td className="px-4 py-3 font-mono">{t.invoiceId.split('-')[0]}</td>
-                            <td className="px-4 py-3">{new Date(t.transactionDate).toLocaleDateString('vi-VN')}</td>
+                            <td className="px-4 py-3">{formatDateOnlyVi(t.transactionDate)}</td>
                             <td className="px-4 py-3 text-right font-semibold">{new Intl.NumberFormat('vi-VN').format(t.systemAmount)}đ</td>
                             <td className="px-4 py-3 text-right font-semibold text-rose-600">{t.gatewayAmount ? new Intl.NumberFormat('vi-VN').format(t.gatewayAmount) + 'đ' : 'N/A'}</td>
                             <td className="px-4 py-3">

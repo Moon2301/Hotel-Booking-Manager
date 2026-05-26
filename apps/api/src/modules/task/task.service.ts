@@ -8,6 +8,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Task, TaskType, TaskStatus } from './entities/task.entity';
 import { CreateTaskDto, UpdateTaskStatusDto } from './dto/task.dto';
+import { Booking, BookingStatus } from '../booking/entities/booking.entity';
+import { PaymentStatus } from '../booking/entities/invoice.entity';
 import { AuditLog } from '../auth/entities/audit-log.entity';
 import { UserRole } from '../auth/entities/user.entity';
 import { TaskGateway } from './task.gateway';
@@ -16,11 +18,30 @@ import { TaskGateway } from './task.gateway';
 export class TaskService {
   constructor(
     @InjectRepository(Task) private taskRepo: Repository<Task>,
+    @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     private readonly taskGateway: TaskGateway,
   ) {}
 
   async createTask(dto: CreateTaskDto): Promise<Task> {
+    const booking = await this.bookingRepo.findOne({
+      where: { id: dto.bookingId },
+    });
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    if (booking.status !== BookingStatus.CHECKED_IN) {
+      throw new BadRequestException(
+        'Chỉ gửi dịch vụ sau khi lễ tân check-in tại quầy (trạng thái CHECKED_IN).',
+      );
+    }
+    if (booking.paymentStatus !== PaymentStatus.PAID) {
+      throw new BadRequestException('Booking payment must be completed first.');
+    }
+    if (!booking.roomId) {
+      throw new BadRequestException('No room assigned to this stay.');
+    }
+
     const task = this.taskRepo.create({
       bookingId: dto.bookingId,
       type: dto.type,
@@ -52,6 +73,7 @@ export class TaskService {
     const qb = this.taskRepo
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.booking', 'booking')
+      .leftJoinAndSelect('booking.room', 'room')
       .leftJoinAndSelect('task.assignee', 'assignee')
       .select([
         'task',
@@ -61,6 +83,8 @@ export class TaskService {
         'booking.status',
         'booking.roomId',
         'booking.propertyId',
+        'room.id',
+        'room.roomNumber',
         'assignee.id',
         'assignee.fullName',
         'assignee.role',
@@ -92,7 +116,7 @@ export class TaskService {
   async getTask(id: string): Promise<Task> {
     const task = await this.taskRepo.findOne({
       where: { id },
-      relations: ['booking', 'assignee'],
+      relations: ['booking', 'booking.room', 'assignee'],
     });
     if (!task) throw new NotFoundException('Task not found');
     return task;

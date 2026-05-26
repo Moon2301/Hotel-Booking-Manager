@@ -68,6 +68,8 @@ services:
       NEXT_PUBLIC_API_URL: ""
       CORS_ORIGINS: http://localhost:3001,http://localhost:8080,http://localhost:3000
       TURBO_UI: stream
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     ports:
       - "${API_PORT:-3000}:3000"
       - "${WEB_ADMIN_PORT:-3001}:3001"
@@ -78,6 +80,8 @@ services:
       - /app/apps/api/node_modules
       - /app/apps/web-admin/node_modules
       - /app/apps/web-client/node_modules
+      # Next.js dev cache on Linux volume (not Windows bind-mount — fixes chunk 404)
+      - web_admin_next:/app/apps/web-admin/.next
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,6 +117,7 @@ volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
+  web_admin_next:
 networks:
   hotel_net:
     driver: bridge

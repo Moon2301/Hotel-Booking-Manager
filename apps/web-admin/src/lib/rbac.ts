@@ -155,6 +155,8 @@ export const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; permission: Permissi
   { pattern: /^\/properties\/[^/]+$/, permission: 'properties:read' },
   { pattern: /^\/properties$/, permission: 'properties:read' },
   { pattern: /^\/room-board/, permission: 'rooms:status' },
+  { pattern: /^\/services/, permission: 'properties:read' },
+  { pattern: /^\/service-catalog/, permission: 'properties:read' },
   { pattern: /^\/bookings\/[^/]+$/, permission: 'bookings:read' },
   { pattern: /^\/bookings$/, permission: 'bookings:read' },
   { pattern: /^\/payments/, permission: 'payments:read' },

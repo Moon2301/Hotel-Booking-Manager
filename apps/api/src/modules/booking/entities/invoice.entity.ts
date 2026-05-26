@@ -23,6 +23,11 @@ export enum PaymentMethod {
   VNPAY = 'VNPAY',
 }
 
+export enum InvoiceType {
+  DEPOSIT = 'DEPOSIT',
+  FINAL = 'FINAL',
+}
+
 @Entity('invoices')
 export class Invoice {
   @PrimaryGeneratedColumn('uuid') id: string;
@@ -34,6 +39,14 @@ export class Invoice {
 
   @Column({ type: 'numeric', precision: 12, scale: 2, name: 'total_amount' })
   totalAmount: number;
+
+  @Column({
+    type: 'enum',
+    enum: InvoiceType,
+    name: 'invoice_type',
+    default: InvoiceType.DEPOSIT,
+  })
+  invoiceType: InvoiceType;
 
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING, name: 'payment_status' })
   paymentStatus: PaymentStatus;

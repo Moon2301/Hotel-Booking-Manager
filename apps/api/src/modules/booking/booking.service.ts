@@ -15,11 +15,11 @@ import {
   IsNull,
   In,
   Not,
-  MoreThan,
 } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import * as QRCode from 'qrcode';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
@@ -38,6 +38,7 @@ import {
   ListBookingsQueryDto,
   CancelBookingDto,
   CheckInDto,
+  CheckInOccupantDto,
   CreateCancellationPolicyDto,
   UpdateCancellationPolicyDto,
 } from './dto/booking.dto';
@@ -48,6 +49,10 @@ import { RoomType } from '../property/entities/room-type.entity';
 import { DailyRate } from '../pricing/entities/daily-rate.entity';
 import { NotificationService } from '../notification/notification.service';
 import { MailService } from './mail.service';
+import { GuestService } from '../guest/guest.service';
+import { BookingOccupant } from './entities/booking-occupant.entity';
+import { BookingCharge, BookingChargeStatus } from './entities/booking-charge.entity';
+import { Invoice, InvoiceType, PaymentStatus as InvoicePaymentStatus } from './entities/invoice.entity';
 
 export interface AvailabilityResult {
   roomTypeId: string;
@@ -73,12 +78,88 @@ export class BookingService {
     @InjectRepository(RoomType) private roomTypeRepo: Repository<RoomType>,
     @InjectRepository(DailyRate) private dailyRateRepo: Repository<DailyRate>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
+    @InjectRepository(BookingOccupant)
+    private occupantRepo: Repository<BookingOccupant>,
+    @InjectRepository(BookingCharge)
+    private chargeRepo: Repository<BookingCharge>,
+    @InjectRepository(Invoice)
+    private invoiceRepo: Repository<Invoice>,
     private dataSource: DataSource,
     private notificationService: NotificationService,
     private jwtService: JwtService,
     private config: ConfigService,
     private mailService: MailService,
+    private guestService: GuestService,
   ) {}
+
+  /**
+   * After payment: assign a physical room and mark RESERVED (chờ check-in tại quầy).
+   */
+  async assignRoomOnPayment(bookingId: string, actorId: string): Promise<Booking> {
+    const booking = await this.bookingRepo.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (booking.paymentStatus !== PaymentStatus.PAID) {
+      throw new BadRequestException('Booking must be paid before room assignment');
+    }
+
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      return booking;
+    }
+
+    let room: Room | null = null;
+    if (booking.roomId) {
+      room = await this.roomRepo.findOne({ where: { id: booking.roomId } });
+      if (room && room.status === RoomStatus.AVAILABLE) {
+        room.status = RoomStatus.RESERVED;
+        await this.roomRepo.save(room);
+      }
+      return booking;
+    }
+
+    room = await this.roomRepo.findOne({
+      where: {
+        propertyId: booking.propertyId,
+        roomTypeId: booking.roomTypeId,
+        status: RoomStatus.AVAILABLE,
+      },
+      order: { roomNumber: 'ASC' },
+    });
+
+    if (!room) {
+      this.logger.warn(
+        `No AVAILABLE room to reserve for booking ${bookingId} (type ${booking.roomTypeId})`,
+      );
+      return booking;
+    }
+
+    room.status = RoomStatus.RESERVED;
+    await this.roomRepo.save(room);
+
+    booking.roomId = room.id;
+    await this.bookingRepo.save(booking);
+
+    await this.auditRepo.save(
+      this.auditRepo.create({
+        actorId,
+        action: 'booking.room_reserved',
+        entityType: 'bookings',
+        entityId: bookingId,
+        after: { roomId: room.id, roomStatus: RoomStatus.RESERVED },
+      }),
+    );
+
+    return booking;
+  }
+
+  private async releaseReservedRoom(roomId: string): Promise<void> {
+    const room = await this.roomRepo.findOne({ where: { id: roomId } });
+    if (!room) return;
+    if (room.status === RoomStatus.RESERVED) {
+      room.status = RoomStatus.AVAILABLE;
+      await this.roomRepo.save(room);
+    }
+  }
 
   // ─── Availability ─────────────────────────────────────────────────────────
 
@@ -119,15 +200,15 @@ export class BookingService {
           } as any,
         });
 
-        // Only count holds that are still valid (not expired, not released)
-        const activeHolds = await em.count(BookingHold, {
-          where: {
-            propertyId,
-            roomTypeId: rt.id,
-            releasedAt: IsNull(),
-            expiresAt: MoreThan(now),
-          },
-        });
+        // Only holds overlapping this night (not all active holds for the type)
+        const activeHolds = await em
+          .createQueryBuilder(BookingHold, 'h')
+          .where('h.property_id = :propertyId', { propertyId })
+          .andWhere('h.room_type_id = :roomTypeId', { roomTypeId: rt.id })
+          .andWhere('h.released_at IS NULL')
+          .andWhere('h.expires_at > :now', { now })
+          .andWhere(':night = ANY(h.nights)', { night })
+          .getCount();
 
         const available = totalRooms - activeBookings - activeHolds;
         if (available < minAvailable) minAvailable = available;
@@ -159,11 +240,19 @@ export class BookingService {
       });
       if (!property) throw new NotFoundException('Property not found');
 
-      // Reuse computeAvailability inside the same transaction / EntityManager
+      if (!dto.nights?.length) {
+        throw new BadRequestException('At least one night is required');
+      }
+
+      // Must match checkAvailability: `to` is checkout date (day after last night),
+      // not the last night itself — otherwise we under-count nights vs step 2 UI.
+      const stayFrom = this.toDateString(dto.nights[0]);
+      const stayTo = this.addDays(dto.nights[dto.nights.length - 1], 1);
+
       const avail = await this.computeAvailability(
         dto.propertyId,
-        dto.nights[0],
-        dto.nights[dto.nights.length - 1],
+        stayFrom,
+        stayTo,
         queryRunner.manager,
       );
       const rtAvail = avail.find((a) => a.roomTypeId === dto.roomTypeId);
@@ -262,8 +351,11 @@ export class BookingService {
         order: { createdAt: 'DESC' },
       });
 
-      const checkInDate = hold.nights[0];
-      const checkOutDate = this.addDays(hold.nights[hold.nights.length - 1], 1);
+      const checkInDate = this.toDateString(hold.nights[0]);
+      const checkOutDate = this.addDays(
+        hold.nights[hold.nights.length - 1],
+        1,
+      );
 
       const booking = queryRunner.manager.create(Booking, {
         propertyId: hold.propertyId,
@@ -292,7 +384,8 @@ export class BookingService {
       await queryRunner.manager.save(hold);
 
       let totalAmount = 0;
-      for (const night of hold.nights) {
+      for (const nightRaw of hold.nights) {
+        const night = this.toDateString(nightRaw);
         const rate = await queryRunner.manager.findOne(DailyRate, {
           where: {
             propertyId: hold.propertyId,
@@ -356,10 +449,131 @@ export class BookingService {
     }
   }
 
+  /**
+   * Gán phòng RESERVED cho booking PAID chưa có phòng; cron xử lý PAID > 30 phút.
+   */
+  async syncPaidBookings(propertyId: string | undefined, actorId: string) {
+    const qb = this.bookingRepo
+      .createQueryBuilder('booking')
+      .where('booking.paymentStatus = :paid', { paid: PaymentStatus.PAID })
+      .andWhere('booking.status = :confirmed', {
+        confirmed: BookingStatus.CONFIRMED,
+      });
+
+    if (propertyId) {
+      qb.andWhere('booking.propertyId = :propertyId', { propertyId });
+    }
+
+    const bookings = await qb.getMany();
+    const staleCutoff = new Date(Date.now() - 30 * 60 * 1000);
+
+    let assigned = 0;
+    let autoStale = 0;
+
+    for (const booking of bookings) {
+      const isStale = booking.updatedAt <= staleCutoff;
+      if (!booking.roomId) {
+        await this.assignRoomOnPayment(booking.id, actorId);
+        assigned++;
+        if (isStale) autoStale++;
+      } else if (isStale) {
+        await this.assignRoomOnPayment(booking.id, actorId);
+        autoStale++;
+      }
+    }
+
+    return {
+      total: bookings.length,
+      assigned,
+      autoStaleProcessed: autoStale,
+    };
+  }
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async cronSyncStalePaidBookings() {
+    const staleCutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const stale = await this.bookingRepo.find({
+      where: {
+        paymentStatus: PaymentStatus.PAID,
+        status: BookingStatus.CONFIRMED,
+      },
+    });
+
+    for (const booking of stale) {
+      if (booking.updatedAt > staleCutoff) continue;
+      if (!booking.roomId) {
+        try {
+          await this.assignRoomOnPayment(booking.id, 'cron:auto-paid-30m');
+          this.logger.log(
+            `Auto-assigned room for stale PAID booking ${booking.id}`,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Failed auto-assign for booking ${booking.id}: ${err.message}`,
+          );
+        }
+      }
+    }
+  }
+
+  async reassignBookingRoom(
+    bookingId: string,
+    roomId: string,
+    actorId: string,
+  ) {
+    const booking = await this.bookingRepo.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (booking.paymentStatus !== PaymentStatus.PAID) {
+      throw new BadRequestException('Only PAID bookings can be reassigned');
+    }
+
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      throw new BadRequestException(
+        'Room reassignment only allowed before check-in',
+      );
+    }
+
+    const room = await this.roomRepo.findOne({
+      where: {
+        id: roomId,
+        propertyId: booking.propertyId,
+        roomTypeId: booking.roomTypeId,
+      },
+    });
+    if (!room) throw new NotFoundException('Room not found or incompatible');
+
+    const previousRoomId = booking.roomId;
+    if (previousRoomId && previousRoomId !== roomId) {
+      await this.releaseReservedRoom(previousRoomId);
+    }
+
+    booking.roomId = room.id;
+    await this.bookingRepo.save(booking);
+
+    if (room.status === RoomStatus.AVAILABLE) {
+      room.status = RoomStatus.RESERVED;
+      await this.roomRepo.save(room);
+    }
+
+    await this.auditRepo.save(
+      this.auditRepo.create({
+        actorId,
+        action: 'booking.reassign_room',
+        entityType: 'bookings',
+        entityId: bookingId,
+        after: { roomId: room.id, roomNumber: room.roomNumber },
+      }),
+    );
+
+    return this.getBooking(bookingId);
+  }
+
   async listBookings(query: ListBookingsQueryDto) {
     const {
       propertyId,
       status,
+      paymentStatus,
       guestId,
       checkInFrom,
       checkInTo,
@@ -372,19 +586,30 @@ export class BookingService {
       .leftJoinAndSelect('booking.guest', 'guest')
       .leftJoinAndSelect('booking.roomType', 'roomType')
       .leftJoinAndSelect('booking.property', 'property')
+      .leftJoinAndSelect('booking.room', 'room')
       .select([
         'booking',
         'guest.id',
         'guest.email',
         'guest.fullName',
+        'guest.phone',
         'roomType.id',
         'roomType.name',
         'property.id',
         'property.name',
+        'room.id',
+        'room.roomNumber',
+        'room.status',
+        'room.roomTypeId',
       ]);
 
     if (propertyId) qb.andWhere('booking.propertyId = :propertyId', { propertyId });
     if (status) qb.andWhere('booking.status = :status', { status });
+    if (query.paymentStatus) {
+      qb.andWhere('booking.paymentStatus = :paymentStatus', {
+        paymentStatus: query.paymentStatus,
+      });
+    }
     if (guestId) qb.andWhere('booking.guestId = :guestId', { guestId });
     if (checkInFrom) qb.andWhere('booking.checkIn >= :checkInFrom', { checkInFrom });
     if (checkInTo) qb.andWhere('booking.checkIn <= :checkInTo', { checkInTo });
@@ -404,10 +629,52 @@ export class BookingService {
   async getBooking(id: string) {
     const booking = await this.bookingRepo.findOne({
       where: { id },
-      relations: ['guest', 'roomType', 'property', 'room'],
+      relations: ['guest', 'roomType', 'property', 'room', 'occupants'],
     });
     if (!booking) throw new NotFoundException('Booking not found');
+    return this.sanitizeBookingOccupants(booking);
+  }
+
+  private sanitizeBookingOccupants(booking: Booking): Booking {
+    if (booking.occupants?.length) {
+      booking.occupants = booking.occupants.map((o) => ({
+        id: o.id,
+        bookingId: o.bookingId,
+        roomId: o.roomId,
+        fullName: o.fullName,
+        idDocumentType: o.idDocumentType,
+        isPrimary: o.isPrimary,
+        createdAt: o.createdAt,
+      })) as BookingOccupant[];
+    }
     return booking;
+  }
+
+  private hashIdDocument(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex');
+  }
+
+  private normalizeCheckInOccupants(dto: CheckInDto): CheckInOccupantDto[] {
+    if (dto.occupants?.length) {
+      return dto.occupants.map((o) => ({
+        ...o,
+        fullName: o.fullName.trim(),
+        idDocumentNumber: o.idDocumentNumber.replace(/\s+/g, '').trim(),
+      }));
+    }
+    if (dto.idDocumentType && dto.idDocumentNumber?.trim()) {
+      return [
+        {
+          fullName: '',
+          idDocumentType: dto.idDocumentType,
+          idDocumentNumber: dto.idDocumentNumber.replace(/\s+/g, '').trim(),
+          isPrimary: true,
+        },
+      ];
+    }
+    throw new BadRequestException(
+      'At least one guest with ID document is required (occupants array)',
+    );
   }
 
   async cancelBooking(id: string, dto: CancelBookingDto, actorId: string) {
@@ -449,18 +716,24 @@ export class BookingService {
     }
 
     const before = { status: booking.status, paymentStatus: booking.paymentStatus };
+    const wasCheckedIn = booking.status === BookingStatus.CHECKED_IN;
+    const reservedRoomId = booking.roomId;
 
     booking.status = BookingStatus.CANCELLED;
     booking.paymentStatus =
       refundAmount > 0 ? PaymentStatus.REFUNDED : booking.paymentStatus;
     if (dto.reason) booking.notes = dto.reason;
 
-    await this.bookingRepo.save(booking);
-
-    // Release associated room if checked-in
-    if (booking.roomId) {
-      await this.roomRepo.update(booking.roomId, { status: RoomStatus.CLEANING });
+    if (reservedRoomId) {
+      if (wasCheckedIn) {
+        await this.roomRepo.update(reservedRoomId, { status: RoomStatus.CLEANING });
+      } else {
+        await this.releaseReservedRoom(reservedRoomId);
+        booking.roomId = null as any;
+      }
     }
+
+    await this.bookingRepo.save(booking);
 
     await this.auditRepo.save(
       this.auditRepo.create({
@@ -497,7 +770,10 @@ export class BookingService {
   }
 
   async checkIn(id: string, dto: CheckInDto, actorId: string) {
-    const booking = await this.bookingRepo.findOne({ where: { id } });
+    const booking = await this.bookingRepo.findOne({
+      where: { id },
+      relations: ['guest'],
+    });
     if (!booking) throw new NotFoundException('Booking not found');
 
     if (booking.status !== BookingStatus.CONFIRMED) {
@@ -506,33 +782,85 @@ export class BookingService {
       );
     }
 
-    // Find or validate room assignment
-    let room: Room | null = null;
-    if (dto.roomId) {
-      room = await this.roomRepo.findOne({
-        where: {
-          id: dto.roomId,
-          propertyId: booking.propertyId,
-          roomTypeId: booking.roomTypeId,
-        },
-      });
-      if (!room) throw new NotFoundException('Room not found or incompatible');
-    } else {
-      // Auto-assign first available room of the right type
-      room = await this.roomRepo.findOne({
-        where: {
-          propertyId: booking.propertyId,
-          roomTypeId: booking.roomTypeId,
-          status: RoomStatus.AVAILABLE,
-        },
+    if (booking.paymentStatus !== PaymentStatus.PAID) {
+      throw new BadRequestException(
+        'Check-in requires paid booking. Complete payment first.',
+      );
+    }
+
+    const occupants = this.normalizeCheckInOccupants(dto);
+    for (const o of occupants) {
+      if (!o.idDocumentNumber) {
+        throw new BadRequestException(
+          'CCCD/Passport number is required for each guest',
+        );
+      }
+      if (!o.fullName.trim() && !o.isPrimary) {
+        throw new BadRequestException('Full name is required for each guest');
+      }
+    }
+
+    let primaryIdx = occupants.findIndex((o) => o.isPrimary);
+    if (primaryIdx < 0) primaryIdx = 0;
+    const primary = occupants[primaryIdx];
+    if (!primary.fullName.trim() && booking.guest?.fullName) {
+      primary.fullName = booking.guest.fullName;
+    }
+    if (!primary.fullName.trim()) {
+      throw new BadRequestException('Primary guest name is required');
+    }
+
+    const targetRoomId = dto.roomId ?? booking.roomId;
+    if (!targetRoomId) {
+      throw new BadRequestException(
+        'No room assigned to this booking. Confirm payment or assign a room first.',
+      );
+    }
+
+    const room = await this.roomRepo.findOne({
+      where: {
+        id: targetRoomId,
+        propertyId: booking.propertyId,
+        roomTypeId: booking.roomTypeId,
+      },
+    });
+    if (!room) throw new NotFoundException('Room not found or incompatible');
+
+    const allowedRoomStatuses = [RoomStatus.RESERVED, RoomStatus.AVAILABLE];
+    if (!allowedRoomStatuses.includes(room.status)) {
+      throw new ConflictException(
+        `Room ${room.roomNumber} is not ready for check-in (status: ${room.status})`,
+      );
+    }
+
+    const conflicting = await this.bookingRepo.findOne({
+      where: {
+        roomId: targetRoomId,
+        status: BookingStatus.CONFIRMED,
+        id: Not(id),
+      },
+    });
+    if (conflicting) {
+      throw new ConflictException(
+        `Room ${room.roomNumber} is reserved for another booking`,
+      );
+    }
+
+    if (booking.roomId && booking.roomId !== targetRoomId) {
+      await this.releaseReservedRoom(booking.roomId);
+    }
+
+    await this.guestService.recordIdDocument(
+      booking.guestId,
+      primary.idDocumentType,
+      primary.idDocumentNumber,
+    );
+    if (primary.fullName.trim()) {
+      await this.guestService.updateGuest(booking.guestId, {
+        fullName: primary.fullName.trim(),
       });
     }
 
-    if (!room) {
-      throw new ConflictException('No available room found for check-in');
-    }
-
-    // State transitions
     booking.status = BookingStatus.CHECKED_IN;
     booking.roomId = room.id;
     await this.bookingRepo.save(booking);
@@ -540,17 +868,42 @@ export class BookingService {
     room.status = RoomStatus.OCCUPIED;
     await this.roomRepo.save(room);
 
+    await this.occupantRepo.delete({ bookingId: id });
+    for (let i = 0; i < occupants.length; i++) {
+      const o = occupants[i];
+      const name =
+        o.fullName.trim() ||
+        (i === primaryIdx ? primary.fullName.trim() : '');
+      await this.occupantRepo.save(
+        this.occupantRepo.create({
+          bookingId: id,
+          roomId: room.id,
+          fullName: name,
+          idDocumentType: o.idDocumentType,
+          idDocumentHash: this.hashIdDocument(
+            o.idDocumentNumber.toUpperCase(),
+          ),
+          isPrimary: i === primaryIdx,
+        }),
+      );
+    }
+
     await this.auditRepo.save(
       this.auditRepo.create({
         actorId,
         action: 'booking.check_in',
         entityType: 'bookings',
         entityId: id,
-        after: { status: booking.status, roomId: room.id },
+        after: {
+          status: booking.status,
+          roomId: room.id,
+          roomStatus: RoomStatus.OCCUPIED,
+          occupantCount: occupants.length,
+        },
       }),
     );
 
-    return booking;
+    return this.getBooking(id);
   }
 
   async checkOut(id: string, actorId: string) {
@@ -563,8 +916,32 @@ export class BookingService {
       );
     }
 
-    const before = { status: booking.status };
+    const existingFinal = await this.invoiceRepo.findOne({
+      where: { bookingId: id, invoiceType: InvoiceType.FINAL },
+    });
+    if (existingFinal) {
+      throw new BadRequestException('Final invoice already created for this booking');
+    }
 
+    const [charges, deposit] = await Promise.all([
+      this.chargeRepo.find({ where: { bookingId: id, status: BookingChargeStatus.POSTED } }),
+      this.invoiceRepo.findOne({ where: { bookingId: id, invoiceType: InvoiceType.DEPOSIT } }),
+    ]);
+
+    const roomTotal = Number(booking.totalAmount || 0);
+    const chargesTotal = charges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const grandTotal = roomTotal + chargesTotal;
+
+    const finalInvoice = await this.invoiceRepo.save(
+      this.invoiceRepo.create({
+        bookingId: id,
+        totalAmount: grandTotal,
+        invoiceType: InvoiceType.FINAL,
+        paymentStatus: InvoicePaymentStatus.PENDING,
+      }),
+    );
+
+    const before = { status: booking.status };
     booking.status = BookingStatus.CHECKED_OUT;
     await this.bookingRepo.save(booking);
 
@@ -580,7 +957,7 @@ export class BookingService {
         entityType: 'bookings',
         entityId: id,
         before,
-        after: { status: booking.status },
+        after: { status: booking.status, finalInvoiceId: finalInvoice.id },
       }),
     );
 
@@ -595,7 +972,12 @@ export class BookingService {
       this.logger.error(`Failed to send booking checkout notification: ${notifErr.message}`);
     }
 
-    return booking;
+    return {
+      booking,
+      depositInvoice: deposit || null,
+      finalInvoice,
+      totals: { roomTotal, chargesTotal, grandTotal },
+    };
   }
 
   async markNoShow(id: string, actorId: string) {
@@ -609,6 +991,10 @@ export class BookingService {
     }
 
     booking.status = BookingStatus.NO_SHOW;
+    if (booking.roomId) {
+      await this.releaseReservedRoom(booking.roomId);
+      booking.roomId = null as any;
+    }
     await this.bookingRepo.save(booking);
 
     await this.auditRepo.save(
@@ -622,6 +1008,63 @@ export class BookingService {
     );
 
     return booking;
+  }
+
+  async getRoomFolio(propertyId: string, roomId: string) {
+    const room = await this.roomRepo.findOne({
+      where: { id: roomId, propertyId },
+      relations: ['roomType'],
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    const booking = await this.bookingRepo.findOne({
+      where: { propertyId, roomId, status: BookingStatus.CHECKED_IN } as any,
+      relations: ['guest', 'roomType', 'occupants'],
+      order: { createdAt: 'DESC' } as any,
+    });
+
+    if (!booking) {
+      return {
+        room,
+        booking: null,
+        occupants: [],
+        charges: [],
+        depositInvoice: null,
+        finalInvoice: null,
+        totals: { roomTotal: 0, chargesTotal: 0, grandTotal: 0 },
+      };
+    }
+
+    const [charges, depositInvoice, finalInvoice] = await Promise.all([
+      this.chargeRepo.find({
+        where: { bookingId: booking.id } as any,
+        order: { createdAt: 'DESC' } as any,
+      }),
+      this.invoiceRepo.findOne({
+        where: { bookingId: booking.id, invoiceType: InvoiceType.DEPOSIT } as any,
+        order: { issuedAt: 'DESC' } as any,
+      }),
+      this.invoiceRepo.findOne({
+        where: { bookingId: booking.id, invoiceType: InvoiceType.FINAL } as any,
+        order: { issuedAt: 'DESC' } as any,
+      }),
+    ]);
+
+    const roomTotal = Number(booking.totalAmount || 0);
+    const chargesTotal = charges
+      .filter((c) => c.status === BookingChargeStatus.POSTED)
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const grandTotal = roomTotal + chargesTotal;
+
+    return {
+      room,
+      booking: this.sanitizeBookingOccupants(booking),
+      occupants: (booking.occupants || []) as any,
+      charges,
+      depositInvoice: depositInvoice || null,
+      finalInvoice: finalInvoice || null,
+      totals: { roomTotal, chargesTotal, grandTotal },
+    };
   }
 
   // ─── Cancellation Policies ─────────────────────────────────────────────────
@@ -851,27 +1294,70 @@ export class BookingService {
       throw new BadRequestException('Check-in credentials have expired');
     }
 
-    // Reuse existing checkIn logic (auto-assigns available room)
-    return this.checkIn(booking.id, {}, 'self-checkin');
+    throw new BadRequestException(
+      'Vui lòng check-in tại quầy lễ tân với CCCD/Hộ chiếu để đăng ký tạm trú tạm vắng.',
+    );
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  /** Exposed for public booking quote / hold night lists */
+  generateNightDatesPublic(from: string, to: string): string[] {
+    return this.generateNightDates(from, to);
+  }
+
+  /** Normalize DB/API date values to YYYY-MM-DD */
+  private toDateString(value: unknown): string {
+    if (value instanceof Date) {
+      return this.formatDateOnly(value);
+    }
+    if (typeof value === 'string') {
+      return value.includes('T') ? value.split('T')[0] : value.slice(0, 10);
+    }
+    if (value && typeof value === 'object') {
+      const v = value as Record<string, number>;
+      if ('year' in v && 'month' in v && 'day' in v) {
+        const m = String(v.month).padStart(2, '0');
+        const d = String(v.day).padStart(2, '0');
+        return `${v.year}-${m}-${d}`;
+      }
+    }
+    const s = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      return s.slice(0, 10);
+    }
+    throw new BadRequestException(`Invalid date value: ${s}`);
+  }
+
+  /** Calendar dates (YYYY-MM-DD) without local/UTC drift */
+  private parseDateOnly(dateStr: string | Date): Date {
+    const normalized = this.toDateString(dateStr);
+    const [y, m, d] = normalized.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d));
+  }
+
+  private formatDateOnly(d: Date): string {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   private generateNightDates(from: string, to: string): string[] {
     const dates: string[] = [];
-    let current = new Date(from);
-    const end = new Date(to);
+    let current = this.parseDateOnly(from);
+    const end = this.parseDateOnly(to);
     while (current < end) {
-      dates.push(current.toISOString().split('T')[0]);
-      current.setDate(current.getDate() + 1);
+      dates.push(this.formatDateOnly(current));
+      current = new Date(current.getTime() + 86_400_000);
     }
     return dates;
   }
 
-  private addDays(dateStr: string, days: number): string {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+  private addDays(dateStr: string | Date, days: number): string {
+    const d = this.parseDateOnly(dateStr);
+    d.setUTCDate(d.getUTCDate() + days);
+    return this.formatDateOnly(d);
   }
 
   private async checkIdempotency(

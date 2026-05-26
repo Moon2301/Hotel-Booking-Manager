@@ -79,6 +79,48 @@ export interface Room {
   roomType?: RoomType;
 }
 
+// === Service catalog & Charges ===
+
+export type ServiceCategory =
+  | 'FOOD'
+  | 'LAUNDRY'
+  | 'MINIBAR'
+  | 'TRANSPORT'
+  | 'OTHER';
+
+export interface ServiceItem {
+  id: string;
+  propertyId: string;
+  name: string;
+  category: ServiceCategory;
+  unit: string;
+  unitPrice: number;
+  currency: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export enum BookingChargeStatus {
+  POSTED = 'POSTED',
+  VOID = 'VOID',
+}
+
+export interface BookingCharge {
+  id: string;
+  bookingId: string;
+  roomId: string | null;
+  serviceItemId: string | null;
+  description: string | null;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  currency: string;
+  status: BookingChargeStatus;
+  createdBy: string | null;
+  createdAt: string;
+}
+
 // === Booking ===
 
 export enum BookingStatus {
@@ -117,10 +159,21 @@ export interface Booking {
   checkinToken?: string | null;
   checkinTokenExpiresAt?: string | null;
   // Relations
-  guest?: User;
+  guest?: Guest;
   room?: Room;
   roomType?: RoomType;
   property?: Property;
+  occupants?: BookingOccupant[];
+}
+
+export interface BookingOccupant {
+  id: string;
+  bookingId: string;
+  roomId: string;
+  fullName: string;
+  idDocumentType: 'CCCD' | 'PASSPORT';
+  isPrimary: boolean;
+  createdAt: string;
 }
 
 // === Pricing ===
@@ -329,10 +382,16 @@ export enum PaymentMethod {
   VNPAY = 'VNPAY',
 }
 
+export enum InvoiceType {
+  DEPOSIT = 'DEPOSIT',
+  FINAL = 'FINAL',
+}
+
 export interface Invoice {
   id: string;
   bookingId: string;
   totalAmount: number;
+  invoiceType?: InvoiceType;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod | null;
   vnpayTransactionId: string | null;

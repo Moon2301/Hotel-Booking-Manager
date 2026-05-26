@@ -1,11 +1,18 @@
 'use client';
 
 import { useState } from 'react';
+import { usePropertySelection } from '@/providers/property-selection-provider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, patch } from '@/lib/api-client';
 import { toast } from '@/hooks/use-toast';
 import { canTransition, getValidTransitions, groupRoomsByStatus } from '@/lib/room-status';
 import { Property, Room, RoomStatus } from '@/types';
+import {
+  checkOutBooking,
+  getRoomFolio,
+  listServiceItems,
+  postCharge,
+} from '@/lib/api/folio';
 import {
   Select,
   SelectContent,
@@ -17,6 +24,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 /** Color configuration for each room status */
 const STATUS_COLORS: Record<RoomStatus, { bg: string; border: string; text: string; badge: string }> = {
@@ -62,8 +79,10 @@ const STATUS_LABELS: Record<RoomStatus, string> = {
 };
 
 export default function RoomBoardPage() {
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const { selectedPropertyId, setSelectedPropertyId } = usePropertySelection();
   const queryClient = useQueryClient();
+  const [folioRoom, setFolioRoom] = useState<Room | null>(null);
+  const folioOpen = !!folioRoom;
 
   // Fetch properties for the selector dropdown
   const { data: properties, isLoading: propertiesLoading } = useQuery({
@@ -169,10 +188,20 @@ export default function RoomBoardPage() {
               status={status}
               rooms={groupedRooms[status]}
               onStatusChange={handleStatusChange}
+              onOpenFolio={(room) => setFolioRoom(room)}
               isMutating={statusMutation.isPending}
             />
           ))}
         </div>
+      )}
+
+      {selectedPropertyId && folioRoom && (
+        <RoomFolioDialog
+          open={folioOpen}
+          onOpenChange={(v) => !v && setFolioRoom(null)}
+          propertyId={selectedPropertyId}
+          room={folioRoom}
+        />
       )}
     </div>
   );
@@ -182,10 +211,17 @@ interface StatusColumnProps {
   status: RoomStatus;
   rooms: Room[];
   onStatusChange: (room: Room, newStatus: RoomStatus) => void;
+  onOpenFolio: (room: Room) => void;
   isMutating: boolean;
 }
 
-function StatusColumn({ status, rooms, onStatusChange, isMutating }: StatusColumnProps) {
+function StatusColumn({
+  status,
+  rooms,
+  onStatusChange,
+  onOpenFolio,
+  isMutating,
+}: StatusColumnProps) {
   const colors = STATUS_COLORS[status];
 
   return (
@@ -210,6 +246,7 @@ function StatusColumn({ status, rooms, onStatusChange, isMutating }: StatusColum
               key={room.id}
               room={room}
               onStatusChange={onStatusChange}
+              onOpenFolio={onOpenFolio}
               isMutating={isMutating}
             />
           ))
@@ -222,14 +259,20 @@ function StatusColumn({ status, rooms, onStatusChange, isMutating }: StatusColum
 interface RoomCardProps {
   room: Room;
   onStatusChange: (room: Room, newStatus: RoomStatus) => void;
+  onOpenFolio: (room: Room) => void;
   isMutating: boolean;
 }
 
-function RoomCard({ room, onStatusChange, isMutating }: RoomCardProps) {
+function RoomCard({ room, onStatusChange, onOpenFolio, isMutating }: RoomCardProps) {
   const validTransitions = getValidTransitions(room.status);
 
   return (
-    <Card className="shadow-sm">
+    <Card
+      className="shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => onOpenFolio(room)}
+      role="button"
+      tabIndex={0}
+    >
       <CardHeader className="p-3 pb-1">
         <CardTitle className="text-sm font-medium">
           Room {room.roomNumber}
@@ -252,7 +295,10 @@ function RoomCard({ room, onStatusChange, isMutating }: RoomCardProps) {
                   size="sm"
                   className="h-6 px-2 text-xs"
                   disabled={isMutating}
-                  onClick={() => onStatusChange(room, targetStatus)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStatusChange(room, targetStatus);
+                  }}
                 >
                   → {STATUS_LABELS[targetStatus]}
                 </Button>
@@ -262,5 +308,249 @@ function RoomCard({ room, onStatusChange, isMutating }: RoomCardProps) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function moneyVnd(amount: number) {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(amount);
+}
+
+function RoomFolioDialog({
+  open,
+  onOpenChange,
+  propertyId,
+  room,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  propertyId: string;
+  room: Room;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['room-folio', propertyId, room.id],
+    queryFn: () => getRoomFolio(propertyId, room.id),
+    enabled: open,
+  });
+
+  const { data: serviceItems } = useQuery({
+    queryKey: ['service-items', propertyId],
+    queryFn: () => listServiceItems(propertyId),
+    enabled: open,
+  });
+
+  const [serviceItemId, setServiceItemId] = useState('');
+  const [qty, setQty] = useState(1);
+
+  const postChargeMutation = useMutation({
+    mutationFn: () => {
+      if (!data?.booking?.id) throw new Error('No active stay');
+      if (!serviceItemId) throw new Error('Choose service');
+      return postCharge(data.booking.id, { serviceItemId, quantity: qty });
+    },
+    onSuccess: async () => {
+      toast({ title: 'Đã ghi nhận phát sinh' });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['rooms', propertyId] });
+      setQty(1);
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Không thêm được phát sinh',
+        description: err?.message || 'Vui lòng thử lại',
+      });
+    },
+  });
+
+  const checkOutMutation = useMutation({
+    mutationFn: () => {
+      if (!data?.booking?.id) throw new Error('No active stay');
+      return checkOutBooking(data.booking.id);
+    },
+    onSuccess: async () => {
+      toast({ title: 'Đã check-out và tạo hoá đơn FINAL' });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['rooms', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+  });
+
+  const booking = data?.booking;
+  const totals = data?.totals;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Phòng {room.roomNumber} · Khách & phát sinh</DialogTitle>
+          <DialogDescription>
+            Nhân viên có thể xem ai đang ở, đã dùng gì và tổng tiền hiện tại.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading || !data ? (
+          <p className="text-sm text-muted-foreground">Đang tải...</p>
+        ) : !booking ? (
+          <p className="text-sm text-muted-foreground">
+            Phòng hiện không có khách đang ở (không có booking CHECKED_IN).
+          </p>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Booking</div>
+                <div className="font-mono text-sm">{booking.id.slice(0, 8)}…</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {booking.checkIn} → {booking.checkOut}
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Khách</div>
+                <div className="text-sm font-semibold">{booking.guest?.fullName || '—'}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {booking.guest?.phone || booking.guest?.email}
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Tổng tạm tính</div>
+                <div className="text-lg font-extrabold text-emerald-700">
+                  {moneyVnd(totals?.grandTotal ?? 0)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Tiền phòng: {moneyVnd(totals?.roomTotal ?? 0)} · Phát sinh:{' '}
+                  {moneyVnd(totals?.chargesTotal ?? 0)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <div className="text-sm font-semibold">Người đang ở</div>
+              <div className="mt-2 space-y-1 text-sm">
+                {(data.occupants?.length ? data.occupants : booking.occupants || []).map(
+                  (o: any) => (
+                    <div key={o.id} className="flex items-center justify-between gap-3">
+                      <span>
+                        {o.fullName}{' '}
+                        {o.isPrimary ? (
+                          <span className="text-xs text-primary">· chính</span>
+                        ) : null}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{o.idDocumentType}</span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Phát sinh dịch vụ</div>
+                  <div className="text-xs text-muted-foreground">
+                    Chỉ nhân viên ghi nhận. Các phát sinh sẽ được cộng vào hoá đơn FINAL lúc check-out.
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="w-[240px]">
+                    <Label>Dịch vụ</Label>
+                    <Select value={serviceItemId} onValueChange={setServiceItemId}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Chọn dịch vụ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serviceItems?.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name} · {moneyVnd(Number(s.unitPrice))}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-[110px]">
+                    <Label>Số lượng</Label>
+                    <Input
+                      className="h-9"
+                      type="number"
+                      min={1}
+                      value={qty}
+                      onChange={(e) => setQty(Math.max(1, Number(e.target.value || 1)))}
+                    />
+                  </div>
+                  <Button
+                    className="h-9"
+                    disabled={postChargeMutation.isPending || !serviceItemId}
+                    onClick={() => postChargeMutation.mutate()}
+                  >
+                    Thêm
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {data.charges.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Chưa có phát sinh.</p>
+                ) : (
+                  <div className="space-y-1 text-sm">
+                    {data.charges.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate">
+                            {c.description || 'Phát sinh'}
+                            {c.status === 'VOID' ? (
+                              <span className="ml-2 text-xs text-rose-600">· VOID</span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {c.quantity} × {moneyVnd(Number(c.unitPrice))}
+                          </div>
+                        </div>
+                        <div className="font-semibold">{moneyVnd(Number(c.amount))}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <div className="text-sm font-semibold">Hoá đơn</div>
+              <div className="mt-2 space-y-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>DEPOSIT</span>
+                  <span className="font-mono text-xs">
+                    {data.depositInvoice ? data.depositInvoice.id.slice(0, 8) + '…' : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>FINAL</span>
+                  <span className="font-mono text-xs">
+                    {data.finalInvoice ? data.finalInvoice.id.slice(0, 8) + '…' : '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Đóng
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={checkOutMutation.isPending || !data?.booking?.id || !!data?.finalInvoice}
+            onClick={() => checkOutMutation.mutate()}
+          >
+            {data?.finalInvoice ? 'FINAL đã tạo' : 'Check-out & tạo FINAL'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
