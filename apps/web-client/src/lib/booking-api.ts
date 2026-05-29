@@ -181,6 +181,24 @@ export async function fetchConfirmation(bookingId: string, phone: string) {
   return parseJson<ConfirmationResult>(res);
 }
 
+export interface DailyAvailabilityRow {
+  date: string;
+  available: number;
+  total: number;
+}
+
+export async function fetchDailyAvailability(
+  propertyId: string,
+  roomTypeId: string,
+  from: string,
+  to: string,
+) {
+  const q = new URLSearchParams({ propertyId, roomTypeId, from, to });
+  const res = await fetch(`${API}/daily-availability?${q}`);
+  return parseJson<DailyAvailabilityRow[]>(res);
+}
+
+
 export const PENDING_BOOKING_KEY = 'mango_pending_booking';
 
 export function savePendingBooking(bookingId: string, phone: string) {

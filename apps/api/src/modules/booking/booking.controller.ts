@@ -333,9 +333,12 @@ export class BookingController {
     return this.bookingService.generateCheckinToken(id, req.user.id);
   }
 
-  @Post('bookings/self-checkin')
-  @ApiOperation({ summary: 'Perform self check-in using QR token or PIN' })
-  selfCheckIn(@Body() dto: { token?: string; pin?: string; bookingId?: string }) {
-    return this.bookingService.selfCheckIn(dto);
+  @Post('bookings/validate-checkin')
+  @ApiOperation({
+    summary: 'Validate QR token or PIN for digital check-in (credential check only — does NOT complete check-in)',
+    description: 'Scans a guest QR code or PIN. Returns booking info if valid so front-desk staff can proceed with the full checkIn() flow. Requires guest ID document at front desk.',
+  })
+  validateCheckinCredentials(@Body() dto: { token?: string; pin?: string; bookingId?: string }) {
+    return this.bookingService.validateCheckinCredentials(dto);
   }
 }

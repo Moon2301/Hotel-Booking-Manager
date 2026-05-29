@@ -59,6 +59,7 @@ services:
     environment:
       NODE_ENV: development
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_HOST: redis
       DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
       API_INTERNAL_URL: http://127.0.0.1:3000

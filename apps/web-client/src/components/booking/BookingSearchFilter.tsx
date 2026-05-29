@@ -52,7 +52,7 @@ function GuestStepper({
         >
           <Minus className="h-4 w-4" />
         </button>
-        <span className="min-w-[2ch] text-center text-lg font-bold text-mango-accent">
+        <span className="min-w-[2ch] text-center text-lg font-bold text-slate-800 dark:text-mango-accent">
           {value}
         </span>
         <button
@@ -89,11 +89,11 @@ export function BookingSearchFilter({
     <div className={`${panelCard} p-4 sm:p-6`}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-          <Search className="h-5 w-5 text-mango-accent" />
+          <Search className="h-5 w-5 text-sky-600 dark:text-mango-accent" />
           Tìm phòng
         </h2>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-white/10 dark:text-white/80">
-          <Users className="h-3.5 w-3.5 text-mango-accent" />
+          <Users className="h-3.5 w-3.5 text-sky-600 dark:text-mango-accent" />
           {totalGuests} khách ({adults} người lớn
           {children > 0 ? `, ${children} trẻ em` : ''})
         </span>
@@ -102,7 +102,7 @@ export function BookingSearchFilter({
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-mango-accent">
+            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
               <Calendar className="h-3.5 w-3.5" />
               Nhận phòng
             </label>
@@ -115,7 +115,7 @@ export function BookingSearchFilter({
             />
           </div>
           <div>
-            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-mango-accent">
+            <label className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
               <Calendar className="h-3.5 w-3.5" />
               Trả phòng
             </label>

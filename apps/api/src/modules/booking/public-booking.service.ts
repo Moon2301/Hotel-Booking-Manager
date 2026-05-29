@@ -20,7 +20,7 @@ import {
   CreateHoldDto,
   AvailabilityQueryDto,
 } from './dto/booking.dto';
-import { PublicCheckoutDto, PublicQuoteQueryDto } from './dto/public-booking.dto';
+import { PublicCheckoutDto, PublicQuoteQueryDto, PublicDailyAvailabilityQueryDto } from './dto/public-booking.dto';
 
 @Injectable()
 export class PublicBookingService {
@@ -74,6 +74,15 @@ export class PublicBookingService {
 
   checkAvailability(query: AvailabilityQueryDto) {
     return this.bookingService.checkAvailability(query);
+  }
+
+  getDailyAvailability(query: PublicDailyAvailabilityQueryDto) {
+    return this.bookingService.getDailyAvailability(
+      query.propertyId,
+      query.roomTypeId,
+      query.from,
+      query.to,
+    );
   }
 
   async getQuote(query: PublicQuoteQueryDto) {

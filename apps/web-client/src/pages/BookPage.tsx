@@ -193,9 +193,9 @@ export function BookPage() {
   return (
     <BookPageShell title="Đặt phòng trực tuyến" subtitle={stepSubtitle}>
       {catalog && (
-        <div className="mb-6 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+        <div className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white/70 shadow-sm">
           <MapPin className="h-4 w-4 shrink-0 text-mango-accent" />
-          <span className="font-semibold text-white">{catalog.name}</span>
+          <span className="font-semibold text-slate-900 dark:text-white">{catalog.name}</span>
           {catalog.address && (
             <span className="hidden sm:inline">— {catalog.address}</span>
           )}
@@ -205,7 +205,7 @@ export function BookPage() {
       <BookingStepIndicator current={step} />
 
       {error && (
-        <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
           {error}
         </div>
       )}
@@ -228,7 +228,7 @@ export function BookPage() {
           />
 
           {hasSearched && !searching && (
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-slate-600 dark:text-white/60">
               {matchingCount > 0
                 ? `${matchingCount} loại phòng phù hợp · ${checkIn} → ${checkOut} · ${adults} người lớn${children > 0 ? `, ${children} trẻ em` : ''}`
                 : 'Không có phòng trống phù hợp bộ lọc — thử đổi ngày hoặc giảm số khách.'}
@@ -255,6 +255,8 @@ export function BookPage() {
               return (
                 <RoomTypeBookingCard
                   key={rt.id}
+                  propertyId={catalog.id}
+                  roomTypeId={rt.id}
                   name={rt.name}
                   description={rt.description}
                   amenities={rt.amenities}
@@ -286,7 +288,7 @@ export function BookPage() {
             <button
               type="button"
               onClick={() => setStep('browse')}
-              className="mb-4 flex items-center gap-1 text-sm font-semibold text-mango-accent"
+              className="mb-4 flex items-center gap-1 text-sm font-semibold text-sky-600 dark:text-mango-accent"
             >
               <ChevronLeft className="h-4 w-4" />
               Quay lại chọn phòng
@@ -299,7 +301,7 @@ export function BookPage() {
             </p>
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-mango-accent">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
                   Họ và tên
                 </label>
                 <input
@@ -310,7 +312,7 @@ export function BookPage() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-mango-accent">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
                   Email
                 </label>
                 <input
@@ -322,7 +324,7 @@ export function BookPage() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-mango-accent">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
                   Số điện thoại
                 </label>
                 <input

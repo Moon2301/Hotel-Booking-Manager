@@ -13,6 +13,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import {
@@ -59,6 +60,9 @@ export class AuthController {
 
   @Post('auth/guest-login')
   @HttpCode(HttpStatus.OK)
+  // 5 attempts per minute per IP — stricter than global throttle to prevent
+  // brute-forcing (bookingId, phone) pairs to gain unauthorized portal access.
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Guest login using booking ID + phone number' })
   async guestLogin(@Body() body: { bookingId: string; phone: string }) {
     return this.authService.guestLogin(body.bookingId, body.phone);

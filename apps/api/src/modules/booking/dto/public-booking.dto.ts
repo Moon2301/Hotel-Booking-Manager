@@ -47,3 +47,22 @@ export class PublicCheckoutDto {
 }
 
 export { CreateHoldDto as PublicCreateHoldDto };
+
+export class PublicDailyAvailabilityQueryDto {
+  @ApiProperty()
+  @IsUUID()
+  propertyId: string;
+
+  @ApiProperty()
+  @IsUUID()
+  roomTypeId: string;
+
+  @ApiProperty({ example: '2026-05-01' })
+  @IsDateString()
+  from: string;
+
+  @ApiProperty({ example: '2026-05-31' })
+  @IsDateString()
+  to: string;
+}
+

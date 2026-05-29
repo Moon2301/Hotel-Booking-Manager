@@ -50,15 +50,11 @@ export class ReconciliationService {
       relations: ['booking'],
     });
 
-    // Simulated Gateway Report (In real life: await this.vnpayService.getSettlementReport(dateString))
-    // We mock gateway amount. Usually matches, but let's simulate a 5% chance of discrepancy.
-    const gatewayReport = invoices.map(inv => {
-      const hasDiscrepancy = Math.random() < 0.05; 
-      return {
-        vnpayTransactionId: inv.vnpayTransactionId,
-        amount: hasDiscrepancy ? Number(inv.totalAmount) - 1000 : Number(inv.totalAmount),
-      };
-    });
+    // TODO: Replace with actual VNPay Settlement API call before going to production.
+    // Example: const gatewayReport = await this.vnpayService.getSettlementReport(dateString);
+    // The settlement report is typically a CSV/JSON from VNPay's portal API.
+    // Without a real gateway report, all VNPAY invoices are flagged as UNRESOLVED.
+    const gatewayReport: { vnpayTransactionId: string | null; amount: number }[] = [];
 
     for (const invoice of invoices) {
       const gatewayRecord = gatewayReport.find(r => r.vnpayTransactionId === invoice.vnpayTransactionId);
@@ -68,7 +64,7 @@ export class ReconciliationService {
 
       if (!gatewayRecord) {
         status = ReconciliationStatus.UNRESOLVED;
-        notes = 'Missing in gateway report';
+        notes = 'Missing in gateway report — awaiting VNPay Settlement API integration';
       } else if (Number(gatewayRecord.amount) !== Number(invoice.totalAmount)) {
         status = ReconciliationStatus.DISCREPANCY;
         notes = `Amount mismatch. System: ${invoice.totalAmount}, Gateway: ${gatewayRecord.amount}`;

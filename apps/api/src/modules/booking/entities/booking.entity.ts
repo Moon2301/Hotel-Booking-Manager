@@ -11,6 +11,7 @@ import { Task } from '../../task/entities/task.entity';
 import { BookingOccupant } from './booking-occupant.entity';
 
 export enum BookingStatus {
+  /** @deprecated Never assigned by application code. Kept for schema compatibility only. */
   HOLD = 'HOLD',
   CONFIRMED = 'CONFIRMED',
   CHECKED_IN = 'CHECKED_IN',
@@ -55,7 +56,7 @@ export class Booking {
   @OneToMany(() => BookingOccupant, (o) => o.booking)
   occupants: BookingOccupant[];
 
-  @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.HOLD }) status: BookingStatus;
+  @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.CONFIRMED }) status: BookingStatus;
   
   @Column({ type: 'date', name: 'check_in' }) checkIn: string;
   @Column({ type: 'date', name: 'check_out' }) checkOut: string;

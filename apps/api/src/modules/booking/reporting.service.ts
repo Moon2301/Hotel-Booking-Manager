@@ -82,21 +82,61 @@ export class ReportingService {
   }
 
   /**
-   * Generates daily chart data for Recharts
+   * Generates daily chart data for Recharts.
+   * Uses a batch approach (2 DB queries total) instead of N queries per day to avoid N+1.
    */
   async getDailyChartData(propertyId: string, startDate: string, endDate: string) {
-    const data: any[] = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
 
+    // 1 query: all bookings overlapping the range
+    const bookings = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .where('booking.propertyId = :propertyId', { propertyId })
+      .andWhere('booking.status IN (:...statuses)', {
+        statuses: [BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT],
+      })
+      .andWhere('booking.checkIn <= :end', { end: endDate })
+      .andWhere('booking.checkOut >= :start', { start: startDate })
+      .getMany();
+
+    // 1 query: total rooms in property
+    const totalRooms = await this.roomRepo.count({ where: { propertyId } });
+
+    // Compute metrics per-day in-memory — no extra DB calls per day
+    const data: any[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split('T')[0];
-      const metrics = await this.getPerformanceMetrics(propertyId, dateStr, dateStr);
+      const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
+      const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
+
+      let occupiedRoomNights = 0;
+      let totalRevenue = 0;
+
+      for (const b of bookings) {
+        const bCheckIn = new Date(b.checkIn);
+        const bCheckOut = new Date(b.checkOut);
+
+        // Booking overlaps this calendar day
+        if (bCheckIn <= dayEnd && bCheckOut > dayStart) {
+          occupiedRoomNights += 1;
+          const bTotalDays = Math.max(
+            1,
+            Math.round((bCheckOut.getTime() - bCheckIn.getTime()) / (1000 * 60 * 60 * 24)),
+          );
+          totalRevenue += (Number(b.totalAmount) || 0) / bTotalDays;
+        }
+      }
+
+      const occupancyRate =
+        totalRooms > 0 ? (occupiedRoomNights / totalRooms) * 100 : 0;
+      const adr = occupiedRoomNights > 0 ? totalRevenue / occupiedRoomNights : 0;
+
       data.push({
         date: dateStr,
-        adr: metrics.metrics.adr,
-        occupancy: metrics.metrics.occupancyRate,
-        revenue: metrics.metrics.totalRevenue,
+        adr: Math.round(adr),
+        occupancy: Math.round(occupancyRate * 100) / 100,
+        revenue: Math.round(totalRevenue),
       });
     }
 

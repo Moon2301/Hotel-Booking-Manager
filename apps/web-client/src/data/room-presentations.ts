@@ -20,6 +20,7 @@ export interface RoomAmenity {
 
 export interface RoomPresentation {
   imageUrl: string;
+  imageUrls: string[];
   description: string;
   amenities: RoomAmenity[];
   badge?: string;
@@ -62,11 +63,16 @@ function iconForLabel(label: string): LucideIcon {
   return Wifi;
 }
 
-const PRESETS: Record<string, RoomPresentation> = {
+const PRESETS: Record<string, Omit<RoomPresentation, 'imageUrl'>> = {
   'Deluxe Sea View': {
     badge: 'Phổ biến nhất',
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1445019980597-93fa8acb246c?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Phòng 35m² hướng biển với ban công riêng, giường king size, khu vực làm việc và phòng tắm đứng + bồn tắm. Lý tưởng cho cặp đôi hoặc khách công tác.',
     amenities: [
@@ -81,8 +87,13 @@ const PRESETS: Record<string, RoomPresentation> = {
     ],
   },
   'Superior City View': {
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1590490359683-658d3d23f972?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1568495248636-6432b97bd949?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Phòng 28m² nhìn thành phố, thiết kế hiện đại, giường queen, bàn làm việc — phù hợp nghỉ ngắn ngày.',
     amenities: [
@@ -96,8 +107,13 @@ const PRESETS: Record<string, RoomPresentation> = {
   },
   'Standard Twin': {
     badge: 'Tiết kiệm',
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1590490360182-c33a577e27a8?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1591088398332-8a2596a9c921?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Phòng tiêu chuẩn với hai giường đơn, đầy đủ tiện nghi cơ bản, giá tốt cho nhóm bạn hoặc công tác.',
     amenities: [
@@ -110,8 +126,13 @@ const PRESETS: Record<string, RoomPresentation> = {
   },
   'Family Suite': {
     badge: 'Gia đình',
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Suite 55m² gồm phòng khách và phòng ngủ riêng, tối đa 4 khách, bếp lạnh và sofa bed.',
     amenities: [
@@ -124,8 +145,13 @@ const PRESETS: Record<string, RoomPresentation> = {
   },
   'Premier Ocean Suite': {
     badge: 'Cao cấp',
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1591088398332-8a2596a9c921?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1507652313519-d4e9174996dd?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Suite 65m² view panorama biển, bồn tắm kính, minibar cao cấp và không gian tiếp khách riêng.',
     amenities: [
@@ -138,8 +164,13 @@ const PRESETS: Record<string, RoomPresentation> = {
   },
   'Presidential Villa': {
     badge: 'Đỉnh cao',
-    imageUrl:
+    imageUrls: [
       'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&q=80&w=1200',
+      'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200',
+    ],
     description:
       'Villa riêng 120m² với hồ bơi mini, sân vườn, hai phòng ngủ và quản gia — trải nghiệm sang trọng bậc nhất.',
     amenities: [
@@ -152,9 +183,12 @@ const PRESETS: Record<string, RoomPresentation> = {
   },
 };
 
-const DEFAULT_PRESENTATION: RoomPresentation = {
-  imageUrl:
+const DEFAULT_PRESENTATION: Omit<RoomPresentation, 'imageUrl'> = {
+  imageUrls: [
     'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&q=80&w=1200',
+    'https://images.unsplash.com/photo-1613977257363-707ba9348227?auto=format&fit=crop&q=80&w=1200',
+  ],
   description:
     'Phòng nghỉ tiện nghi, thiết kế tối giản sang trọng với đầy đủ tiện nghi cơ bản cho kỳ nghỉ của bạn.',
   amenities: [
@@ -183,8 +217,11 @@ export function getRoomPresentation(room: {
         }))
       : preset.amenities;
 
+  const imageUrls = preset.imageUrls;
+
   return {
-    imageUrl: preset.imageUrl,
+    imageUrl: imageUrls[0],
+    imageUrls,
     description,
     amenities,
     badge: preset.badge,

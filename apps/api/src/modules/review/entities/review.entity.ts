@@ -4,6 +4,7 @@ import {
 } from 'typeorm';
 import { Booking } from '../../booking/entities/booking.entity';
 import { User } from '../../auth/entities/user.entity';
+import { Guest } from '../../guest/entities/guest.entity';
 import { Property } from '../../property/entities/property.entity';
 
 export enum ReviewStatus {
@@ -22,9 +23,9 @@ export class Review {
   booking: Booking;
 
   @Column({ name: 'guest_id' }) guestId: string;
-  @ManyToOne(() => User)
+  @ManyToOne(() => Guest)
   @JoinColumn({ name: 'guest_id' })
-  guest: User;
+  guest: Guest;
 
   @Column({ name: 'property_id' }) propertyId: string;
   @ManyToOne(() => Property)
