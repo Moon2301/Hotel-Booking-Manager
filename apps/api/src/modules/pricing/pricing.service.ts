@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, IsNull } from 'typeorm';
 import { DailyRate, RateSource } from './entities/daily-rate.entity';
 import { RatePlan } from './entities/rate-plan.entity';
 import { BulkUpdateRatesDto, CreateRatePlanDto, UpdateRatePlanDto } from './dto/pricing.dto';
@@ -27,15 +27,42 @@ export class PricingService {
   }
 
   async bulkUpdateRates(propertyId: string, dto: BulkUpdateRatesDto, actorId: string) {
-    const toSave = dto.rates.map(rate => {
-      return this.dailyRateRepo.create({
-        propertyId,
-        ...rate,
-        rateSource: RateSource.MANUAL,
-      });
-    });
+    const saved: DailyRate[] = [];
 
-    const saved = await this.dailyRateRepo.save(toSave);
+    for (const rate of dto.rates) {
+      const ratePlanId = rate.ratePlanId ?? null;
+      const existing = await this.dailyRateRepo.findOne({
+        where: {
+          propertyId,
+          roomTypeId: rate.roomTypeId,
+          night: rate.night,
+          ratePlanId: ratePlanId === null ? IsNull() : ratePlanId,
+        },
+      });
+
+      if (existing) {
+        existing.amount = rate.amount;
+        existing.taxIncluded = rate.taxIncluded ?? existing.taxIncluded;
+        existing.minStay = rate.minStay ?? existing.minStay;
+        existing.closedToArrival =
+          rate.closedToArrival ?? existing.closedToArrival;
+        existing.rateSource = RateSource.MANUAL;
+        saved.push(await this.dailyRateRepo.save(existing));
+      } else {
+        const created = this.dailyRateRepo.create({
+          propertyId,
+          roomTypeId: rate.roomTypeId,
+          night: rate.night,
+          ratePlanId: ratePlanId ?? undefined,
+          amount: rate.amount,
+          taxIncluded: rate.taxIncluded ?? true,
+          minStay: rate.minStay ?? 1,
+          closedToArrival: rate.closedToArrival ?? false,
+          rateSource: RateSource.MANUAL,
+        });
+        saved.push(await this.dailyRateRepo.save(created));
+      }
+    }
 
     await this.auditRepo.save({
       actorId,

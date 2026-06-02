@@ -3,14 +3,12 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
-  Param,
-  Query,
   Req,
   UseGuards,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -19,13 +17,9 @@ import { AuthService } from './auth.service';
 import {
   LoginDto,
   RefreshTokenDto,
-  CreateUserDto,
-  UpdateUserDto,
   ChangePasswordDto,
-  ListUsersQueryDto,
 } from './dto/auth.dto';
-import { Auth, JwtAuthGuard } from './guards/jwt-auth.guard';
-import { UserRole } from './entities/user.entity';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Auth')
 @Controller()
@@ -68,6 +62,19 @@ export class AuthController {
     return this.authService.guestLogin(body.bookingId, body.phone);
   }
 
+  @Get('auth/guest-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Refresh guest + booking data (incl. check-in QR)' })
+  async guestSession(
+    @Req() req: Request & { user: { type?: string; bookingId?: string; guestId?: string } },
+  ) {
+    if (req.user.type !== 'guest' || !req.user.bookingId || !req.user.guestId) {
+      throw new UnauthorizedException('Guest session required');
+    }
+    return this.authService.getGuestSession(req.user.bookingId, req.user.guestId);
+  }
+
   // ─── Current User ──────────────────────────────────────────────────────────
 
   @Get('users/me')
@@ -88,71 +95,5 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(req.user.id, dto);
-  }
-
-  // ─── User Management (Admin) ───────────────────────────────────────────────
-
-  @Post('users')
-  @Auth(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new staff user [SUPER_ADMIN only]' })
-  async createUser(
-    @Body() dto: CreateUserDto,
-    @Req() req: Request & { user: { id: string } },
-  ) {
-    return this.authService.createUser(dto, req.user.id);
-  }
-
-  @Get('users')
-  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'List all users with optional filters' })
-  async listUsers(@Query() query: ListUsersQueryDto) {
-    return this.authService.listUsers(query);
-  }
-
-  @Get('users/:id')
-  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get user details by ID' })
-  async getUser(@Param('id') id: string) {
-    return this.authService.getUser(id);
-  }
-
-  @Patch('users/:id')
-  @Auth(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update user fullName or role [SUPER_ADMIN only]' })
-  async updateUser(
-    @Param('id') id: string,
-    @Body() dto: UpdateUserDto,
-    @Req() req: Request & { user: { id: string } },
-  ) {
-    return this.authService.updateUser(id, dto, req.user.id);
-  }
-
-  @Delete('users/:id')
-  @Auth(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Lock (soft-disable) a user account [SUPER_ADMIN only]' })
-  async lockUser(
-    @Param('id') id: string,
-    @Req() req: Request & { user: { id: string } },
-  ) {
-    return this.authService.lockUser(id, req.user.id);
-  }
-
-  @Patch('users/:id/unlock')
-  @Auth(UserRole.SUPER_ADMIN)
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Unlock a locked user account [SUPER_ADMIN only]' })
-  async unlockUser(
-    @Param('id') id: string,
-    @Req() req: Request & { user: { id: string } },
-  ) {
-    return this.authService.unlockUser(id, req.user.id);
   }
 }

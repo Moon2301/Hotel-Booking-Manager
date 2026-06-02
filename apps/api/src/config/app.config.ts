@@ -26,7 +26,7 @@ export default () => ({
 
   booking: {
     holdTtlSeconds: parseInt(process.env.HOLD_TTL_SECONDS || '600', 10),
-    /** Secret for SHA-256 booking verification code & QR payload */
+    /** Secret for JWT check-in token (quầy lễ tân) */
     qrSecret:
       process.env.BOOKING_QR_SECRET ||
       process.env.BOOKING_HASH_SECRET ||

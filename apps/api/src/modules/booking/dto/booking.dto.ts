@@ -39,6 +39,11 @@ export class ConfirmBookingDto {
   @ApiProperty()
   @IsUUID()
   guestId: string;
+
+  @ApiPropertyOptional({ description: 'Referral partner attribution' })
+  @IsOptional()
+  @IsUUID()
+  partnerId?: string;
 }
 
 export class AvailabilityQueryDto {
@@ -122,10 +127,13 @@ export class AssignBookingRoomDto {
 }
 
 export class CheckInOccupantDto {
-  @ApiProperty({ example: 'Nguyễn Văn A' })
+  @ApiPropertyOptional({
+    example: 'Nguyễn Văn A',
+    description: 'Bắt buộc với người phụ; người chính có thể để trống (lấy tên trên booking).',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  fullName: string;
+  fullName?: string;
 
   @ApiProperty({ enum: IdDocumentType })
   @IsEnum(IdDocumentType)

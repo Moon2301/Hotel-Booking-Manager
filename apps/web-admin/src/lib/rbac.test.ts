@@ -38,6 +38,9 @@ describe('rbac', () => {
         'reviews:moderate',
         'reports:read',
         'reports:export',
+        'invoices:read',
+        'invoices:write',
+        'guests:read',
       ];
       for (const permission of expected) {
         expect(hasPermission(UserRole.PROPERTY_MANAGER, permission)).toBe(true);
@@ -45,8 +48,6 @@ describe('rbac', () => {
       // Should NOT have these
       expect(hasPermission(UserRole.PROPERTY_MANAGER, 'chat:read')).toBe(false);
       expect(hasPermission(UserRole.PROPERTY_MANAGER, 'chat:write')).toBe(false);
-      expect(hasPermission(UserRole.PROPERTY_MANAGER, 'users:read')).toBe(false);
-      expect(hasPermission(UserRole.PROPERTY_MANAGER, 'users:write')).toBe(false);
       expect(hasPermission(UserRole.PROPERTY_MANAGER, 'audit:read')).toBe(false);
     });
 
@@ -61,6 +62,9 @@ describe('rbac', () => {
         'bookings:checkin',
         'chat:read',
         'chat:write',
+        'invoices:read',
+        'invoices:write',
+        'guests:read',
       ];
       for (const permission of expected) {
         expect(hasPermission(UserRole.FRONT_DESK, permission)).toBe(true);
@@ -70,7 +74,6 @@ describe('rbac', () => {
       expect(hasPermission(UserRole.FRONT_DESK, 'rooms:write')).toBe(false);
       expect(hasPermission(UserRole.FRONT_DESK, 'rates:read')).toBe(false);
       expect(hasPermission(UserRole.FRONT_DESK, 'payments:read')).toBe(false);
-      expect(hasPermission(UserRole.FRONT_DESK, 'users:read')).toBe(false);
     });
 
     it('HOUSEKEEPING has only rooms:read and rooms:status', () => {
@@ -82,10 +85,11 @@ describe('rbac', () => {
       expect(hasPermission(UserRole.HOUSEKEEPING, 'bookings:read')).toBe(false);
     });
 
-    it('FINANCE_READ has only payments:read, reports:read, reports:export', () => {
+    it('FINANCE_READ has payments, reports, and invoices read', () => {
       expect(hasPermission(UserRole.FINANCE_READ, 'payments:read')).toBe(true);
       expect(hasPermission(UserRole.FINANCE_READ, 'reports:read')).toBe(true);
       expect(hasPermission(UserRole.FINANCE_READ, 'reports:export')).toBe(true);
+      expect(hasPermission(UserRole.FINANCE_READ, 'invoices:read')).toBe(true);
       // Should NOT have anything else
       expect(hasPermission(UserRole.FINANCE_READ, 'properties:read')).toBe(false);
       expect(hasPermission(UserRole.FINANCE_READ, 'bookings:read')).toBe(false);
@@ -101,7 +105,6 @@ describe('rbac', () => {
       expect(hasPermission(UserRole.SUPPORT, 'properties:read')).toBe(false);
       expect(hasPermission(UserRole.SUPPORT, 'bookings:read')).toBe(false);
       expect(hasPermission(UserRole.SUPPORT, 'rooms:read')).toBe(false);
-      expect(hasPermission(UserRole.SUPPORT, 'users:read')).toBe(false);
     });
 
     it('every role in PERMISSION_MATRIX only contains valid permissions', () => {
@@ -177,10 +180,6 @@ describe('rbac', () => {
       expect(getRoutePermission('/reports')).toBe('reports:read');
     });
 
-    it('maps /users to users:read', () => {
-      expect(getRoutePermission('/users')).toBe('users:read');
-    });
-
     it('maps /audit-log to audit:read', () => {
       expect(getRoutePermission('/audit-log')).toBe('audit:read');
     });
@@ -207,7 +206,6 @@ describe('rbac', () => {
         '/reviews',
         '/chat',
         '/reports',
-        '/users',
         '/audit-log',
       ];
       for (const route of routes) {
@@ -220,7 +218,6 @@ describe('rbac', () => {
       expect(canAccessRoute(UserRole.HOUSEKEEPING, '/properties')).toBe(false);
       expect(canAccessRoute(UserRole.HOUSEKEEPING, '/bookings')).toBe(false);
       expect(canAccessRoute(UserRole.HOUSEKEEPING, '/payments')).toBe(false);
-      expect(canAccessRoute(UserRole.HOUSEKEEPING, '/users')).toBe(false);
     });
 
     it('FINANCE_READ can access payments and reports', () => {
@@ -243,7 +240,6 @@ describe('rbac', () => {
       expect(canAccessRoute(UserRole.FRONT_DESK, '/bookings')).toBe(true);
       expect(canAccessRoute(UserRole.FRONT_DESK, '/chat')).toBe(true);
       expect(canAccessRoute(UserRole.FRONT_DESK, '/payments')).toBe(false);
-      expect(canAccessRoute(UserRole.FRONT_DESK, '/users')).toBe(false);
       expect(canAccessRoute(UserRole.FRONT_DESK, '/audit-log')).toBe(false);
     });
 

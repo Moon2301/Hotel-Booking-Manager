@@ -14,7 +14,7 @@ import { ReviewModule } from './modules/review/review.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { GuestModule } from './modules/guest/guest.module';
-import { TaskModule } from './modules/task/task.module';
+import { ChannelModule } from './modules/channel/channel.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -58,9 +58,9 @@ import appConfig from './config/app.config';
     BookingModule,
     PaymentModule,
     ReviewModule,
-    TaskModule,
     NotificationModule,
     ChatModule,
+    ChannelModule,
   ],
 })
 export class AppModule {}

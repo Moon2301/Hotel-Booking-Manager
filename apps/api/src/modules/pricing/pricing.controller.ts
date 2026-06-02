@@ -16,6 +16,11 @@ export class PricingController {
   // ─── Daily Rates ──────────────────────────────────────────────────────────
 
   @Get('rates')
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FINANCE_READ,
+  )
   @ApiOperation({ summary: 'Get daily rates for a property within a date range' })
   @ApiQuery({ name: 'from', required: true, example: '2025-10-01' })
   @ApiQuery({ name: 'to', required: true, example: '2025-10-31' })

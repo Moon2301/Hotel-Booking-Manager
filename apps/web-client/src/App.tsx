@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import { GuestPortalEntry } from './components/guest/GuestPortalEntry';
+import { GuestServiceTab } from './components/guest/GuestServiceTab';
 import { ThemeToggle } from './components/ThemeToggle';
 import { pageBg, panelCard } from './lib/theme-classes';
 import { HomePage } from './pages/HomePage';
@@ -15,25 +16,20 @@ import { BookPage } from './pages/BookPage';
 import { BookingConfirmationPage } from './pages/BookingConfirmationPage';
 import { RoomsPage } from './pages/RoomsPage';
 import { ServicesPage } from './pages/ServicesPage';
-import { io, Socket } from 'socket.io-client';
-import { QRCodeCanvas } from 'qrcode.react';
-import { 
-  Calendar, 
-  CreditCard, 
-  LogOut, 
-  Send, 
-  User, 
-  Clock, 
-  HelpCircle, 
-  Coffee, 
-  Truck, 
-  Sparkles, 
+import { PartnerReferralCapture } from './components/PartnerReferralCapture';
+import { BookingQrCard } from './components/booking/BookingQrCard';
+import {
+  Calendar,
+  CreditCard,
+  LogOut,
+  User,
+  Clock,
   CheckCircle,
   AlertTriangle,
   Receipt,
   FileText,
-  MessageSquare,
   Hexagon,
+  UtensilsCrossed,
 } from 'lucide-react';
 
 interface Guest {
@@ -45,9 +41,11 @@ interface Guest {
 
 interface Booking {
   id: string;
+  bookingCode?: string | null;
   propertyId: string;
   roomTypeId: string;
   roomId: string | null;
+  roomNumber?: string | null;
   status: string;
   checkIn: string;
   checkOut: string;
@@ -55,6 +53,7 @@ interface Booking {
   totalAmount: number | null;
   checkinToken?: string | null;
   checkinTokenExpiresAt?: string | null;
+  qrPayload?: string | null;
 }
 
 interface Invoice {
@@ -68,18 +67,29 @@ interface Invoice {
   paidAt: string | null;
 }
 
-interface Task {
-  id: string;
-  bookingId: string;
-  type: 'CLEANING' | 'FOOD' | 'TRANSPORT' | 'OTHER';
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  guestNote: string | null;
-  staffReport: string | null;
-  createdAt: string;
-  updatedAt: string;
+type StayTab = 'stay' | 'invoice' | 'service';
+
+function normalizeDateOnly(value: string | undefined | null): string {
+  if (!value) return '';
+  return String(value).slice(0, 10);
 }
 
-type StayTab = 'stay' | 'invoice' | 'service';
+function sameBookingSnapshot(a: Booking | null, b: Booking): boolean {
+  if (!a) return false;
+  return (
+    a.id === b.id &&
+    a.bookingCode === b.bookingCode &&
+    a.status === b.status &&
+    a.roomId === b.roomId &&
+    a.roomNumber === b.roomNumber &&
+    a.paymentStatus === b.paymentStatus &&
+    a.checkinToken === b.checkinToken &&
+    a.qrPayload === b.qrPayload &&
+    normalizeDateOnly(a.checkIn) === normalizeDateOnly(b.checkIn) &&
+    normalizeDateOnly(a.checkOut) === normalizeDateOnly(b.checkOut) &&
+    Number(a.totalAmount ?? 0) === Number(b.totalAmount ?? 0)
+  );
+}
 
 function MyStay() {
   const navigate = useNavigate();
@@ -96,7 +106,6 @@ function MyStay() {
   
   // Dashboard details state
   const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<StayTab>('stay');
   
   // Loading & Error states
@@ -106,38 +115,20 @@ function MyStay() {
   const [paymentMessage, setPaymentMessage] = useState<{ status: 'success' | 'failed' | 'error', text: string } | null>(null);
   const [payLoading, setPayLoading] = useState(false);
 
-  // New service request form
-  const [serviceType, setServiceType] = useState<'CLEANING' | 'FOOD' | 'TRANSPORT' | 'OTHER'>('CLEANING');
-  const [guestNote, setGuestNote] = useState('');
-  const [serviceLoading, setServiceLoading] = useState(false);
-  const [serviceSuccess, setServiceSuccess] = useState(false);
+  const sessionHydratedRef = useRef(false);
+  const dashboardLoadedKeyRef = useRef<string | null>(null);
 
-  // Notifications State
-  interface ToastMsg {
-    id: number;
-    title: string;
-    message: string;
-    type: 'info' | 'success';
-  }
-  const [toasts, setToasts] = useState<ToastMsg[]>([]);
-
-  const addToast = (title: string, message: string, type: 'info' | 'success' = 'info') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, title, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 5000);
+  const clearGuestSession = () => {
+    localStorage.removeItem('guest_token');
+    localStorage.removeItem('guest_data');
+    localStorage.removeItem('booking_data');
+    sessionHydratedRef.current = false;
+    dashboardLoadedKeyRef.current = null;
+    setToken(null);
+    setGuest(null);
+    setBooking(null);
+    setInvoice(null);
   };
-
-  // Request native notification permission on load
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  // Socket connection
-  const socketRef = useRef<Socket | null>(null);
 
   const refetchInvoice = async (bookingId: string, authToken: string) => {
     const invoiceRes = await fetch(`/api/v1/invoices/booking/${bookingId}`, {
@@ -149,7 +140,50 @@ function MyStay() {
     }
   };
 
-  // Deep link: /my-stay?tab=invoice|service|stay
+  const refetchGuestSession = async (authToken: string): Promise<boolean> => {
+    const res = await fetch('/api/v1/auth/guest-session', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (res.status === 401) {
+      clearGuestSession();
+      return false;
+    }
+    if (!res.ok) return false;
+    const session = await res.json();
+    if (session.guest) {
+      setGuest((prev) => {
+        if (
+          prev?.id === session.guest.id &&
+          prev.fullName === session.guest.fullName &&
+          prev.email === session.guest.email &&
+          prev.phone === session.guest.phone
+        ) {
+          return prev;
+        }
+        localStorage.setItem('guest_data', JSON.stringify(session.guest));
+        return session.guest;
+      });
+    }
+    if (session.booking) {
+      const merged: Booking = {
+        ...session.booking,
+        checkIn: normalizeDateOnly(session.booking.checkIn),
+        checkOut: normalizeDateOnly(session.booking.checkOut),
+        qrPayload: session.qrPayload ?? session.booking.qrPayload ?? null,
+      };
+      setBooking((prev) => {
+        if (sameBookingSnapshot(prev, merged)) return prev;
+        localStorage.setItem('booking_data', JSON.stringify(merged));
+        return merged;
+      });
+    }
+    return true;
+  };
+
+  const bookingQrValue =
+    booking?.bookingCode || booking?.qrPayload || null;
+
+  // Deep link: /my-stay?tab=invoice|stay
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab === 'stay' || tab === 'invoice' || tab === 'service') {
@@ -192,111 +226,92 @@ function MyStay() {
       setSearchParams(next, { replace: true });
     };
 
-    if (paymentStatus === 'success' && token && booking) {
-      refetchInvoice(booking.id, token).finally(clearParams);
+    const bookingId = booking?.id;
+    if (paymentStatus === 'success' && token && bookingId) {
+      Promise.all([
+        refetchInvoice(bookingId, token),
+        refetchGuestSession(token),
+      ]).finally(clearParams);
     } else if (paymentStatus !== 'success') {
       clearParams();
     }
-  }, [searchParams, setSearchParams, token, booking]);
+  }, [searchParams, setSearchParams, token, booking?.id]);
 
-  // Decode/parse local storage auth details on load
+  // Hydrate guest/booking from localStorage once per login (avoid overwriting session refresh).
   useEffect(() => {
+    if (!token) {
+      sessionHydratedRef.current = false;
+      return;
+    }
+    if (sessionHydratedRef.current) return;
+
     const savedGuest = localStorage.getItem('guest_data');
     const savedBooking = localStorage.getItem('booking_data');
-    if (token && savedGuest && savedBooking) {
+    if (savedGuest && savedBooking) {
+      const parsedBooking = JSON.parse(savedBooking) as Booking;
       setGuest(JSON.parse(savedGuest));
-      setBooking(JSON.parse(savedBooking));
+      setBooking({
+        ...parsedBooking,
+        checkIn: normalizeDateOnly(parsedBooking.checkIn),
+        checkOut: normalizeDateOnly(parsedBooking.checkOut),
+      });
     }
+    sessionHydratedRef.current = true;
   }, [token]);
 
-  // Fetch dashboard data (Invoices, Tasks) once authenticated
+  const bookingId = booking?.id;
+
+  // Load invoice; show full-page spinner only on first load per token+booking.
   useEffect(() => {
-    if (!token || !booking) return;
+    if (!token || !bookingId) return;
+
+    const loadKey = `${token}:${bookingId}`;
+    const showSpinner = dashboardLoadedKeyRef.current !== loadKey;
+    if (showSpinner) {
+      dashboardLoadedKeyRef.current = loadKey;
+      setDataLoading(true);
+    }
+
+    let cancelled = false;
 
     const fetchData = async () => {
-      setDataLoading(true);
       try {
-        // Fetch Invoice
-        const invoiceRes = await fetch(`/api/v1/invoices/booking/${booking.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
+        const sessionOk = await refetchGuestSession(token);
+        if (!sessionOk || cancelled) return;
+
+        const invoiceRes = await fetch(`/api/v1/invoices/booking/${bookingId}`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
+
+        if (cancelled) return;
+
         if (invoiceRes.ok) {
-          const invoiceData = await invoiceRes.json();
-          setInvoice(invoiceData);
+          setInvoice(await invoiceRes.json());
         } else {
           setInvoice(null);
-        }
-
-        // Fetch Tasks
-        const tasksRes = await fetch(`/api/v1/tasks?bookingId=${booking.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (tasksRes.ok) {
-          const tasksData = await tasksRes.json();
-          setTasks(tasksData);
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       } finally {
-        setDataLoading(false);
+        if (!cancelled) setDataLoading(false);
       }
     };
 
-    fetchData();
-
-    // Establish WebSocket Connection
-    socketRef.current = io('/tasks', {
-      auth: { token },
-      transports: ['websocket', 'polling']
-    });
-
-    socketRef.current.on('connect', () => {
-      console.log('Connected to tasks socket');
-      socketRef.current?.emit('join_booking', booking.id);
-    });
-
-    socketRef.current.on('task_changed', (data: { event: 'created' | 'updated', task: Task }) => {
-      console.log('Socket event received:', data);
-      
-      // Update tasks list real-time
-      setTasks((prevTasks) => {
-        const index = prevTasks.findIndex((t) => t.id === data.task.id);
-        if (index > -1) {
-          const updated = [...prevTasks];
-          updated[index] = data.task;
-          return updated;
-        }
-        return [data.task, ...prevTasks];
-      });
-
-      // Show native and in-app notifications for updates
-      if (data.event === 'updated') {
-        const typeLabel = data.task.type === 'CLEANING' ? 'Dọn phòng' : data.task.type === 'FOOD' ? 'Đồ ăn' : data.task.type === 'TRANSPORT' ? 'Đưa đón' : 'Dịch vụ khác';
-        const statusLabel = data.task.status === 'IN_PROGRESS' ? 'đang xử lý' : data.task.status === 'COMPLETED' ? 'đã hoàn thành' : 'đã huỷ';
-        const title = `Mango Hotel - Dịch vụ phòng`;
-        const body = `Yêu cầu [${typeLabel}] của bạn ${statusLabel}!`;
-        
-        // In-app Toast
-        addToast(title, body, 'info');
-
-        // Native push notification (if allowed)
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(title, { body });
-        }
-      }
-    });
+    void fetchData();
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
+      cancelled = true;
+      if (dashboardLoadedKeyRef.current === loadKey) {
+        dashboardLoadedKeyRef.current = null;
       }
+      setDataLoading(false);
     };
-  }, [token, booking]);
+  }, [token, bookingId]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bookingIdInput || !phoneInput) {
-      setAuthError('Vui lòng điền đầy đủ Booking ID và Số điện thoại');
+      setAuthError('Vui lòng điền đầy đủ mã đặt phòng và số điện thoại');
       return;
     }
 
@@ -319,11 +334,19 @@ function MyStay() {
 
       localStorage.setItem('guest_token', result.accessToken);
       localStorage.setItem('guest_data', JSON.stringify(result.guest));
-      localStorage.setItem('booking_data', JSON.stringify(result.booking));
-      
+      const bookingWithQr: Booking = {
+        ...result.booking,
+        checkIn: normalizeDateOnly(result.booking.checkIn),
+        checkOut: normalizeDateOnly(result.booking.checkOut),
+        qrPayload: result.qrPayload ?? result.booking.qrPayload ?? null,
+      };
+      localStorage.setItem('booking_data', JSON.stringify(bookingWithQr));
+
+      sessionHydratedRef.current = true;
+      dashboardLoadedKeyRef.current = null;
       setToken(result.accessToken);
       setGuest(result.guest);
-      setBooking(result.booking);
+      setBooking(bookingWithQr);
     } catch (err) {
       setAuthError('Lỗi kết nối máy chủ. Vui lòng thử lại sau.');
     } finally {
@@ -332,14 +355,7 @@ function MyStay() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('guest_token');
-    localStorage.removeItem('guest_data');
-    localStorage.removeItem('booking_data');
-    setToken(null);
-    setGuest(null);
-    setBooking(null);
-    setInvoice(null);
-    setTasks([]);
+    clearGuestSession();
     navigate('/my-stay');
   };
 
@@ -376,58 +392,14 @@ function MyStay() {
     }
   };
 
-  const handleRequestService = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!booking) return;
-
-    setServiceLoading(true);
-    setServiceSuccess(false);
-
-    try {
-      const response = await fetch('/api/v1/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          bookingId: booking.id,
-          type: serviceType,
-          guestNote: guestNote.trim()
-        })
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setGuestNote('');
-        setServiceSuccess(true);
-        // Automatically appended via WebSocket client message, but safe to fetch or append
-        setTasks((prev) => {
-          if (prev.find(t => t.id === result.id)) return prev;
-          return [result, ...prev];
-        });
-      } else {
-        const msg = Array.isArray(result.message)
-          ? result.message.join(', ')
-          : result.message || 'Không thể tạo yêu cầu';
-        alert(`Lỗi: ${msg}`);
-      }
-    } catch (err) {
-      alert('Lỗi kết nối máy chủ.');
-    } finally {
-      setServiceLoading(false);
-    }
-  };
-
   const requestedTab = searchParams.get('tab');
 
   useEffect(() => {
-    if (token && guest && booking) return;
+    if (token && guest && bookingId) return;
     if (requestedTab === 'book') {
       navigate('/book', { replace: true });
     }
-  }, [requestedTab, token, guest, booking, navigate]);
+  }, [requestedTab, token, guest, bookingId, navigate]);
 
   if (!token || !guest || !booking) {
     return (
@@ -454,21 +426,6 @@ function MyStay() {
   // Authenticated Guest Dashboard
   return (
     <div className={`relative ${pageBg}`}>
-      {/* Toast Notifications Container */}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className={`pointer-events-auto w-72 p-4 shadow-xl transition-all duration-300 ${panelCard}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 text-mango-accent"><MessageSquare className="h-5 w-5" /></div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">{t.title}</h4>
-                <p className="mt-1 text-xs text-slate-600 dark:text-white/70">{t.message}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Banner / Message Alert */}
       {paymentMessage && (
         <div className={`text-center py-4 px-6 text-sm font-bold text-white shadow-md animate-bounce flex items-center justify-center gap-2 ${
@@ -499,8 +456,8 @@ function MyStay() {
             <div className="flex items-center gap-2 text-slate-800 dark:text-white/85">
               <User className="h-5 w-5 text-mango-accent" />
               <span className="text-sm font-bold">{guest.fullName}</span>
-              <span className="rounded-full bg-slate-200 px-2 py-0.5 font-mono text-xs text-slate-600 dark:bg-white/10 dark:text-white/50">
-                {booking.id.substring(0, 8)}…
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 font-mono text-xs tracking-wider text-slate-600 dark:bg-white/10 dark:text-white/50">
+                {booking.bookingCode ?? '—'}
               </span>
             </div>
           </div>
@@ -539,16 +496,9 @@ function MyStay() {
             <Receipt className="h-5 w-5" />
             Hoá đơn & Thanh toán
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('service')}
-            className={`${tabBtn('service')} relative`}
-          >
-            <Coffee className="h-5 w-5" />
+          <button type="button" onClick={() => setActiveTab('service')} className={tabBtn('service')}>
+            <UtensilsCrossed className="h-5 w-5" />
             Dịch vụ phòng
-            {tasks.filter((t) => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length > 0 && (
-              <span className="absolute right-0 top-2 h-2 w-2 animate-ping rounded-full bg-rose-500" />
-            )}
           </button>
         </div>
 
@@ -568,9 +518,23 @@ function MyStay() {
                   </div>
                   
                   <div className="grid sm:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                    {booking.bookingCode && (
+                      <div className="rounded-xl border border-mango-accent/30 bg-mango-accent/5 p-4 dark:border-mango-accent/40 dark:bg-mango-accent/10 sm:col-span-2">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Mã đặt phòng
+                        </p>
+                        <p className="font-mono text-2xl font-black tracking-[0.2em] text-slate-900 dark:text-white">
+                          {booking.bookingCode}
+                        </p>
+                      </div>
+                    )}
                     <div className="rounded-xl border border-slate-200 bg-slate-100 p-4 dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Mã Phòng</p>
-                      <p className="text-lg font-black text-slate-900">{booking.roomId ? `Phòng ${booking.roomId}` : 'Chưa xếp phòng (Đang xử lý)'}</p>
+                      <p className="text-lg font-black text-slate-900 dark:text-white">
+                        {booking.roomNumber
+                          ? `Phòng ${booking.roomNumber}`
+                          : 'Chưa xếp phòng (Đang xử lý)'}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-100 p-4 dark:border-white/10 dark:bg-white/5">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Trạng thái đặt phòng</p>
@@ -607,33 +571,39 @@ function MyStay() {
                       </h3>
                       <p className="mt-2 text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
                         Mang <strong>CCCD hoặc Hộ chiếu</strong> đến quầy lễ tân để check-in và
-                        đăng ký tạm trú. Sau khi lễ tân xác nhận, bạn mới gửi được yêu cầu dịch vụ
-                        phòng trên My Stay.
+                        đăng ký tạm trú.
                       </p>
                     </div>
                   )}
-                  {booking.status === 'CONFIRMED' && booking.checkinToken && (
-                    <div className="rounded-2xl border border-mango-accent/30 bg-gradient-to-br from-mango-navy-900/80 to-mango-navy-950/80 p-6 text-center shadow-xl backdrop-blur">
-                      <h3 className="mb-2 text-lg font-bold text-slate-900 dark:text-white">Mã tham chiếu đặt phòng</h3>
-                      <p className="mb-4 text-xs text-slate-600 dark:text-white/60">
-                        Xuất trình mã QR tại quầy (kèm CCCD/Hộ chiếu) để lễ tân tra cứu booking.
-                      </p>
-                      <div className="bg-white p-4 inline-block rounded-xl border border-slate-200 shadow-sm mx-auto">
-                        <QRCodeCanvas value={booking.checkinToken} size={160} level="H" />
+                  {booking.status === 'CONFIRMED' &&
+                    booking.paymentStatus === 'PAID' &&
+                    bookingQrValue && (
+                      <div className="space-y-2">
+                        {booking.bookingCode && (
+                          <p className="text-center font-mono text-2xl font-black tracking-[0.2em] text-slate-900 dark:text-white">
+                            {booking.bookingCode}
+                          </p>
+                        )}
+                        <BookingQrCard
+                          value={bookingQrValue}
+                          title="QR đặt phòng"
+                          hint="Quét mã QR tại quầy (kèm CCCD/Hộ chiếu) để lễ tân tra cứu booking."
+                          size={160}
+                        />
                       </div>
-                      {booking.checkinTokenExpiresAt && (
-                        <p className="text-xs text-emerald-600 mt-4 font-bold bg-emerald-50 py-1.5 rounded-lg border border-emerald-100">
-                          Hiệu lực đến: {new Date(booking.checkinTokenExpiresAt).toLocaleString('vi-VN')}
+                    )}
+                  {booking.status === 'CONFIRMED' &&
+                    booking.paymentStatus === 'PAID' &&
+                    !bookingQrValue && (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">
+                          Check-in điện tử
+                        </h3>
+                        <p className="text-sm text-slate-500">
+                          Đang tạo mã QR… tải lại trang hoặc liên hệ lễ tân.
                         </p>
-                      )}
-                    </div>
-                  )}
-                  {booking.status === 'CONFIRMED' && !booking.checkinToken && (
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm text-center">
-                      <h3 className="text-lg font-bold text-slate-900 mb-2">Check-in Điện tử</h3>
-                      <p className="text-sm text-slate-500">Mã QR Check-in chưa được tạo. Vui lòng liên hệ lễ tân.</p>
-                    </div>
-                  )}
+                      </div>
+                    )}
                   
                   <div className="flex h-[300px] flex-col justify-between rounded-2xl border border-mango-accent/30 bg-gradient-to-br from-mango-navy-900 to-mango-navy-950 p-6 text-white shadow-xl">
                   <div>
@@ -648,6 +618,10 @@ function MyStay() {
                 </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'service' && token && booking && (
+              <GuestServiceTab token={token} bookingStatus={booking.status} />
             )}
 
             {activeTab === 'invoice' && (
@@ -770,136 +744,6 @@ function MyStay() {
               </div>
             )}
 
-            {activeTab === 'service' && (
-              <div className="grid lg:grid-cols-3 gap-8">
-                {booking.status !== 'CHECKED_IN' ? (
-                  <div className={`lg:col-span-3 ${panelCard} p-8 text-center`}>
-                    <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-500" />
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Dịch vụ phòng chưa mở
-                    </h2>
-                    <p className="mx-auto mt-2 max-w-md text-sm text-slate-600 dark:text-white/60">
-                      {booking.status === 'CONFIRMED'
-                        ? 'Bạn cần check-in tại quầy lễ tân (CCCD/Hộ chiếu) trước khi gửi yêu cầu dọn phòng, đồ ăn, xe…'
-                        : 'Yêu cầu dịch vụ chỉ khả dụng trong thời gian đang lưu trú.'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                {/* Request Form */}
-                <div className={`${panelCard} space-y-6 p-6`}>
-                  <div>
-                    <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Gửi yêu cầu dịch vụ</h2>
-                    <p className="text-sm text-slate-600 dark:text-white/60">Chúng tôi phục vụ nhanh chóng và trực tiếp đến phòng bạn</p>
-                  </div>
-
-                  {serviceSuccess && (
-                    <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 shrink-0" />
-                      <span>Đã gửi yêu cầu dịch vụ thành công!</span>
-                    </div>
-                  )}
-
-                  <form className="space-y-4" onSubmit={handleRequestService}>
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-mango-accent">Loại yêu cầu</label>
-                      <select
-                        className="field-select"
-                        value={serviceType}
-                        onChange={(e) => setServiceType(e.target.value as any)}
-                      >
-                        <option value="CLEANING">Dọn phòng (Housecleaning)</option>
-                        <option value="FOOD">Đặt đồ ăn / Thức uống (Dining Order)</option>
-                        <option value="TRANSPORT">Đặt xe đưa đón / Di chuyển (Transport)</option>
-                        <option value="OTHER">Yêu cầu khác (Other Request)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-mango-accent">Ghi chú chi tiết</label>
-                      <textarea
-                        className="field-textarea"
-                        placeholder="VD: Cần bổ sung 2 khăn tắm, dọn phòng vào lúc 14h..."
-                        value={guestNote}
-                        onChange={(e) => setGuestNote(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={serviceLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-mango-accent py-3 font-bold text-mango-navy-950 shadow-md transition hover:bg-mango-accent-light"
-                    >
-                      <Send className="h-4 w-4" />
-                      {serviceLoading ? 'Đang gửi...' : 'Gửi yêu cầu ngay'}
-                    </button>
-                  </form>
-                </div>
-
-                {/* History List */}
-                <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-gradient-to-br dark:from-mango-navy-900/80 dark:to-mango-navy-950/80 dark:shadow-xl dark:backdrop-blur space-y-6">
-                  <div>
-                    <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Lịch sử yêu cầu dịch vụ</h2>
-                    <p className="text-sm text-slate-600 dark:text-white/60">Theo dõi tiến độ xử lý thời gian thực</p>
-                  </div>
-
-                  {tasks.length === 0 ? (
-                    <div className="text-center py-20 text-slate-400">
-                      <HelpCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                      <p className="text-sm">Bạn chưa gửi bất kỳ yêu cầu dịch vụ nào trong phòng.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-                      {tasks.map((task) => (
-                        <div key={task.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all hover:bg-slate-50">
-                          <div className="flex items-start gap-3">
-                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-                              task.type === 'CLEANING' ? 'bg-emerald-100 text-emerald-600' :
-                              task.type === 'FOOD' ? 'bg-amber-100 text-amber-600' :
-                              task.type === 'TRANSPORT' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {task.type === 'CLEANING' ? <Sparkles className="h-5 w-5" /> :
-                               task.type === 'FOOD' ? <Coffee className="h-5 w-5" /> :
-                               task.type === 'TRANSPORT' ? <Truck className="h-5 w-5" /> : <MessageSquare className="h-5 w-5" />}
-                            </div>
-                            <div>
-                              <p className="font-bold text-slate-900 text-sm">
-                                {task.type === 'CLEANING' ? 'Dọn phòng' :
-                                 task.type === 'FOOD' ? 'Gọi đồ ăn' :
-                                 task.type === 'TRANSPORT' ? 'Xe đưa đón' : 'Yêu cầu khác'}
-                              </p>
-                              <p className="text-slate-500 text-xs line-clamp-1">{task.guestNote}</p>
-                              {task.staffReport && (
-                                <p className="text-emerald-600 text-xs mt-1 bg-emerald-50 px-2 py-0.5 rounded-md inline-block">Staff: {task.staffReport}</p>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex sm:flex-col items-end gap-2 shrink-0">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
-                              task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700 animate-pulse' :
-                              task.status === 'CANCELLED' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {task.status === 'COMPLETED' ? 'Hoàn thành' :
-                               task.status === 'IN_PROGRESS' ? 'Đang làm' :
-                               task.status === 'CANCELLED' ? 'Đã hủy' : 'Chờ xử lý'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              {new Date(task.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(task.createdAt).toLocaleDateString('vi-VN')}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                </>
-                )}
-              </div>
-            )}
-            
           </>
         )}
       </main>
@@ -910,6 +754,7 @@ function MyStay() {
 export default function App() {
   return (
     <BrowserRouter>
+      <PartnerReferralCapture />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/rooms" element={<RoomsPage />} />

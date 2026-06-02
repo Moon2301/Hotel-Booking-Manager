@@ -49,7 +49,13 @@ CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3001,http://localhost:8080,http://
 EOF
 fi
 
-echo "==> Ensuring schema prerequisites..."
+echo "==> Running database migrations..."
+(cd apps/api && pnpm run migrate)
+
+echo "==> Rebuilding inventory calendar from bookings/holds..."
+(cd apps/api && pnpm exec ts-node scripts/rebuild-inventory-calendar.ts) || echo "    Inventory rebuild skipped."
+
+echo "==> Ensuring schema prerequisites (backfill)..."
 PGPASSWORD="${POSTGRES_PASSWORD:-hotel_secret}" psql \
   -h "${POSTGRES_HOST:-postgres}" \
   -U "${POSTGRES_USER:-hotel_user}" \
@@ -57,11 +63,11 @@ PGPASSWORD="${POSTGRES_PASSWORD:-hotel_secret}" psql \
   -v ON_ERROR_STOP=0 \
   -f /app/docker/scripts/ensure-schema.sql
 
-echo "==> Running database migrations..."
-(cd apps/api && pnpm run migrate)
-
 echo "==> Seeding database (skips if data already exists)..."
 (cd apps/api && pnpm exec ts-node seed-runner.ts) || echo "    Seed skipped (may already exist)."
+
+echo "==> Building API (keeps dist in sync with src on bind mounts)..."
+(cd apps/api && pnpm run build)
 
 echo "==> Preparing Next.js admin (.next cache in Docker volume)..."
 mkdir -p /app/apps/web-admin/.next

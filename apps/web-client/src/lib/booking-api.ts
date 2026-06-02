@@ -52,11 +52,14 @@ export interface CheckoutResult {
 export interface ConfirmationResult {
   booking: {
     id: string;
+    bookingCode: string;
     checkIn: string;
     checkOut: string;
     status: string;
     paymentStatus: string;
     totalAmount: number;
+    checkinToken?: string | null;
+    checkinTokenExpiresAt?: string | null;
   };
   guest: { fullName: string; email: string; phone: string };
   roomType: { id: string; name: string } | null;
@@ -67,6 +70,8 @@ export interface ConfirmationResult {
     paymentStatus: string;
     paidAt: string | null;
   } | null;
+  qrPayload?: string | null;
+  bookingCode?: string | null;
 }
 
 const API = '/api/v1/public';
@@ -132,6 +137,22 @@ export async function fetchAvailability(
   return parseJson<AvailabilityRow[]>(res);
 }
 
+export type AvailabilityCalendarResult = {
+  from: string;
+  to: string;
+  calendars: Record<string, { date: string; available: number }[]>;
+};
+
+export async function fetchAvailabilityCalendar(
+  propertyId: string,
+  from: string,
+  to: string,
+) {
+  const q = new URLSearchParams({ propertyId, from, to });
+  const res = await fetch(`${API}/availability/calendar?${q}`);
+  return parseJson<AvailabilityCalendarResult>(res);
+}
+
 export async function fetchQuote(
   propertyId: string,
   roomTypeId: string,
@@ -161,11 +182,42 @@ export async function createHold(
   return parseJson<HoldResult>(res);
 }
 
+export interface CheckoutGroupResult {
+  bookings: {
+    bookingId: string;
+    roomTypeName: string;
+    totalAmount: number;
+  }[];
+  guest: { fullName: string; email: string; phone: string };
+  invoice: { id: string; totalAmount: number; paymentStatus: string };
+  paymentUrl: string;
+  primaryBookingId: string;
+}
+
+export async function checkoutGroup(payload: {
+  propertyId: string;
+  checkIn: string;
+  checkOut: string;
+  lines: { roomTypeId: string; quantity: number }[];
+  fullName: string;
+  email: string;
+  phone: string;
+  partnerRef?: string;
+}) {
+  const res = await fetch(`${API}/checkout-group`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<CheckoutGroupResult>(res);
+}
+
 export async function checkout(payload: {
   holdId: string;
   fullName: string;
   email: string;
   phone: string;
+  partnerRef?: string;
 }) {
   const res = await fetch(`${API}/checkout`, {
     method: 'POST',

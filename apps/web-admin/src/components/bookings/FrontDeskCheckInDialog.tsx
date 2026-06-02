@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMounted } from '@/hooks/use-mounted';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { get, patch } from '@/lib/api-client';
@@ -31,6 +31,8 @@ import { LogIn, Plus, Trash2 } from 'lucide-react';
 interface FrontDeskCheckInDialogProps {
   booking: Booking;
   propertyId: string;
+  /** CONFIRMED bookings already assigned to a physical room (from queue list). */
+  roomReservationByRoomId: Map<string, Booking>;
   compact?: boolean;
 }
 
@@ -66,6 +68,7 @@ const ROOM_STATUS_VI: Record<string, string> = {
 export function FrontDeskCheckInDialog({
   booking,
   propertyId,
+  roomReservationByRoomId,
   compact,
 }: FrontDeskCheckInDialogProps) {
   const { can } = usePermissions();
@@ -93,23 +96,6 @@ export function FrontDeskCheckInDialog({
     enabled: open && !!propertyId,
   });
 
-  const { data: reservedBookings } = useQuery({
-    queryKey: ['bookings-room-reservations', propertyId],
-    queryFn: () =>
-      get<{ data: Booking[] }>(
-        `/bookings?propertyId=${propertyId}&status=CONFIRMED&limit=200`,
-      ),
-    enabled: open && !!propertyId,
-  });
-
-  const roomReservationMap = useMemo(() => {
-    const map = new Map<string, Booking>();
-    reservedBookings?.data?.forEach((b) => {
-      if (b.roomId) map.set(b.roomId, b);
-    });
-    return map;
-  }, [reservedBookings]);
-
   const checkInRooms =
     rooms?.filter(
       (r) =>
@@ -117,17 +103,33 @@ export function FrontDeskCheckInDialog({
         (r.status === 'RESERVED' || r.status === 'AVAILABLE'),
     ) ?? [];
 
+  const selectedRoom = rooms?.find((r) => r.id === roomId);
+  const reservedForSelected = roomId
+    ? roomReservationByRoomId.get(roomId)
+    : undefined;
+  const isSelectedRoomForThisBooking =
+    !!selectedRoom &&
+    selectedRoom.roomTypeId === booking.roomTypeId &&
+    (selectedRoom.status === 'AVAILABLE' ||
+      (selectedRoom.status === 'RESERVED' &&
+        (!reservedForSelected || reservedForSelected.id === booking.id)));
+
   const checkInMutation = useMutation({
-    mutationFn: () =>
-      patch<Booking>(`/bookings/${booking.id}/check-in`, {
+    mutationFn: () => {
+      const primaryName =
+        booking.guest?.fullName?.trim() || 'Khách lưu trú';
+      return patch<Booking>(`/bookings/${booking.id}/check-in`, {
         roomId,
         occupants: occupants.map((o) => ({
-          fullName: o.fullName.trim(),
+          fullName: o.isPrimary
+            ? o.fullName.trim() || primaryName
+            : o.fullName.trim(),
           idDocumentType: o.idDocumentType,
           idDocumentNumber: o.idDocumentNumber.trim(),
           isPrimary: o.isPrimary,
         })),
-      }),
+      });
+    },
     onSuccess: () => {
       toast({
         title: 'Check-in thành công',
@@ -135,7 +137,6 @@ export function FrontDeskCheckInDialog({
       });
       queryClient.invalidateQueries({ queryKey: ['bookings', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['bookings-paid', propertyId] });
-      queryClient.invalidateQueries({ queryKey: ['bookings-room-reservations', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['rooms', propertyId] });
       setOpen(false);
     },
@@ -176,14 +177,37 @@ export function FrontDeskCheckInDialog({
   };
 
   const primaryOccupant = occupants.find((o) => o.isPrimary) ?? occupants[0];
-  const canSubmit =
-    !!roomId &&
-    checkInRooms.length > 0 &&
+  const occupantsValid =
     occupants.length > 0 &&
     occupants.every(
-      (o) => o.idDocumentNumber.trim() && (o.isPrimary ? true : o.fullName.trim()),
+      (o) =>
+        o.idDocumentNumber.trim() &&
+        (o.isPrimary ? true : o.fullName.trim().length >= 2),
     ) &&
-    (primaryOccupant?.fullName.trim() || booking.guest?.fullName);
+    (primaryOccupant?.fullName.trim() ||
+      booking.guest?.fullName?.trim() ||
+      primaryOccupant?.isPrimary);
+
+  const canSubmit =
+    !roomsLoading && !!roomId && isSelectedRoomForThisBooking && occupantsValid;
+
+  const submitBlockReason = (() => {
+    if (roomsLoading) return 'Đang tải danh sách phòng…';
+    if (!roomId) return 'Chọn phòng để check-in.';
+    if (!isSelectedRoomForThisBooking) {
+      if (selectedRoom?.status === 'OCCUPIED') {
+        return 'Phòng đang có khách — chọn phòng trống hoặc RESERVED cho phiếu này.';
+      }
+      if (reservedForSelected && reservedForSelected.id !== booking.id) {
+        return 'Phòng đã RESERVED cho booking khác.';
+      }
+      return 'Phòng không hợp lệ cho check-in (cần AVAILABLE hoặc RESERVED cho phiếu này).';
+    }
+    if (!occupantsValid) {
+      return 'Nhập số giấy tờ; người phụ cần họ tên đầy đủ (≥2 ký tự). Người chính có thể dùng tên trên booking.';
+    }
+    return null;
+  })();
 
   if (!can('bookings:checkin')) return null;
   if (booking.status !== 'CONFIRMED') return null;
@@ -229,7 +253,7 @@ export function FrontDeskCheckInDialog({
                   </SelectTrigger>
                   <SelectContent>
                     {checkInRooms.map((r) => {
-                      const reservedFor = roomReservationMap.get(r.id);
+                      const reservedFor = roomReservationByRoomId.get(r.id);
                       const isThisBooking = r.id === booking.roomId;
                       const isOtherBooking =
                         reservedFor && reservedFor.id !== booking.id;
@@ -379,8 +403,13 @@ export function FrontDeskCheckInDialog({
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col sm:items-stretch">
+          {submitBlockReason && !checkInMutation.isPending && (
+            <p className="text-xs text-destructive">{submitBlockReason}</p>
+          )}
           <Button
+            type="button"
+            className="w-full sm:w-auto sm:self-end"
             onClick={() => checkInMutation.mutate()}
             disabled={checkInMutation.isPending || !canSubmit}
           >

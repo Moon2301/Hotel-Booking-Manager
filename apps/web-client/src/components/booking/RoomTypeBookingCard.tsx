@@ -1,3 +1,6 @@
+import { Users, Check, Minus, Plus } from 'lucide-react';
+import { getRoomPresentation } from '../../data/room-presentations';
+import { RoomAvailabilityCalendar } from './RoomAvailabilityCalendar';
 import { useState, useEffect } from 'react';
 import { Users, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { getRoomPresentation } from '../../data/room-presentations';
@@ -16,7 +19,15 @@ interface RoomTypeBookingCardProps {
   soldOut: boolean;
   capacityExceeded?: boolean;
   selected?: boolean;
+  cartQuantity?: number;
+  maxCartQuantity?: number;
   onSelect: () => void;
+  onAddToCart?: () => void;
+  onCartQuantityChange?: (quantity: number) => void;
+  availabilityByDate?: Record<string, number>;
+  checkIn?: string;
+  checkOut?: string;
+  calendarLoading?: boolean;
 }
 
 function formatVnd(n: number) {
@@ -339,10 +350,19 @@ export function RoomTypeBookingCard({
   soldOut,
   capacityExceeded = false,
   selected,
+  cartQuantity = 0,
+  maxCartQuantity = 0,
   onSelect,
+  onAddToCart,
+  onCartQuantityChange,
+  availabilityByDate = {},
+  checkIn,
+  checkOut,
+  calendarLoading = false,
 }: RoomTypeBookingCardProps) {
   const presentation = getRoomPresentation({ name, description, amenities });
-  const disabled = soldOut || capacityExceeded;
+  const disabled = soldOut;
+  const singleRoomDisabled = soldOut || capacityExceeded;
 
   return (
     <article
@@ -354,6 +374,7 @@ export function RoomTypeBookingCard({
             : 'border-slate-200 bg-white hover:border-mango-accent/40 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/[0.08]'
       }`}
     >
+      <div className="grid lg:grid-cols-[minmax(0,300px)_1fr_minmax(0,240px)]">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,300px)_1fr_240px] divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-white/5">
         <div className="relative aspect-[4/3] lg:aspect-auto lg:min-h-[300px]">
           <RoomImageSlider
@@ -373,12 +394,12 @@ export function RoomTypeBookingCard({
               Đã chọn
             </span>
           )}
+          {soldOut && (
+            <div className="absolute inset-0 flex items-center justify-center bg-mango-navy-950/70 backdrop-blur-sm">
           {disabled && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 dark:bg-mango-navy-950/70 backdrop-blur-sm z-20">
               <span className="rounded-full bg-rose-600 px-4 py-2 text-center text-sm font-bold text-white">
-                {capacityExceeded
-                  ? `Không đủ chỗ (tối đa ${maxOccupancy} khách)`
-                  : 'Hết phòng'}
+                Hết phòng
               </span>
             </div>
           )}
@@ -431,11 +452,49 @@ export function RoomTypeBookingCard({
             </ul>
           </div>
 
-          <div className="mt-auto pt-6">
+          <div className="mt-auto flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-center">
+            {!soldOut && onCartQuantityChange && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Bớt phòng trong đơn"
+                  disabled={cartQuantity <= 0}
+                  onClick={() =>
+                    onCartQuantityChange(Math.max(0, cartQuantity - 1))
+                  }
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white disabled:opacity-30"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="min-w-[4rem] text-center text-sm font-bold text-white">
+                  {cartQuantity > 0 ? `${cartQuantity} trong đơn` : 'Thêm đơn'}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Thêm phòng vào đơn"
+                  disabled={
+                    maxCartQuantity > 0 && cartQuantity >= maxCartQuantity
+                  }
+                  onClick={() => {
+                    if (cartQuantity === 0 && onAddToCart) onAddToCart();
+                    else onCartQuantityChange(cartQuantity + 1);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-mango-accent/50 bg-mango-accent/20 text-mango-accent disabled:opacity-30"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <button
               type="button"
-              disabled={disabled}
+              disabled={singleRoomDisabled}
               onClick={onSelect}
+              className={`rounded-full py-3.5 text-sm font-bold transition-all sm:px-8 ${
+                singleRoomDisabled
+                  ? 'cursor-not-allowed bg-white/10 text-white/30'
+                  : selected
+                    ? 'bg-mango-accent text-mango-navy-950 shadow-lg shadow-mango-accent/25'
+                    : 'border border-white/25 bg-transparent text-white hover:border-mango-accent hover:text-mango-accent'
               className={`w-full rounded-full py-3.5 text-sm font-bold transition-all sm:w-auto sm:px-10 ${
                 disabled
                   ? 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-white/10 dark:text-white/30'
@@ -444,17 +503,31 @@ export function RoomTypeBookingCard({
                     : 'bg-slate-900 text-white hover:bg-mango-accent hover:text-mango-navy-950 dark:bg-white dark:text-mango-navy-950 dark:hover:bg-mango-accent dark:hover:text-mango-navy-950'
               }`}
             >
-              {disabled
-                ? capacityExceeded
-                  ? 'Chọn phòng khác'
-                  : 'Không khả dụng'
-                : selected
-                  ? 'Tiếp tục thanh toán →'
-                  : 'Chọn phòng này'}
+              {soldOut
+                ? 'Không khả dụng'
+                : capacityExceeded
+                  ? 'Chỉ đặt kèm phòng khác'
+                  : 'Đặt riêng loại này →'}
             </button>
           </div>
         </div>
 
+        <div className="border-t border-white/10 p-4 lg:border-l lg:border-t-0 lg:p-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-mango-accent">
+            Lịch trống
+          </p>
+          {calendarLoading ? (
+            <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xs text-white/50">
+              Đang tải lịch...
+            </div>
+          ) : (
+            <RoomAvailabilityCalendar
+              availabilityByDate={availabilityByDate}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              focusDate={checkIn}
+            />
+          )}
         <div className="flex flex-col p-6 bg-slate-50/20 dark:bg-slate-900/5 justify-center">
           <RoomDailyCalendar propertyId={propertyId} roomTypeId={roomTypeId} />
         </div>

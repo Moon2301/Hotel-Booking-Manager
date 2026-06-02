@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { BookingModule } from '../booking/booking.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -16,7 +17,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   imports: [
     TypeOrmModule.forFeature([User, RefreshToken, AuditLog, Guest, Booking]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({}), // secrets loaded dynamically in service
+    JwtModule.register({}),
+    forwardRef(() => BookingModule),
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController, AuditLogController],

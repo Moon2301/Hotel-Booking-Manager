@@ -25,14 +25,12 @@ export type Permission =
   | 'chat:write'
   | 'reports:read'
   | 'reports:export'
-  | 'users:read'
-  | 'users:write'
   | 'audit:read'
-  | 'tasks:read'
-  | 'tasks:write'
   | 'invoices:read'
   | 'invoices:write'
-  | 'guests:read';
+  | 'guests:read'
+  | 'partners:read'
+  | 'partners:write';
 
 /**
  * All possible permissions as an array (useful for iteration/testing).
@@ -59,14 +57,12 @@ export const ALL_PERMISSIONS: Permission[] = [
   'chat:write',
   'reports:read',
   'reports:export',
-  'users:read',
-  'users:write',
   'audit:read',
-  'tasks:read',
-  'tasks:write',
   'invoices:read',
   'invoices:write',
   'guests:read',
+  'partners:read',
+  'partners:write',
 ];
 
 /**
@@ -95,11 +91,11 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'reviews:moderate',
     'reports:read',
     'reports:export',
-    'tasks:read',
-    'tasks:write',
     'invoices:read',
     'invoices:write',
     'guests:read',
+    'partners:read',
+    'partners:write',
   ],
 
   [UserRole.FRONT_DESK]: [
@@ -112,25 +108,19 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'bookings:checkin',
     'chat:read',
     'chat:write',
-    'tasks:read',
-    'tasks:write',
     'invoices:read',
     'invoices:write',
     'guests:read',
   ],
 
-  [UserRole.HOUSEKEEPING]: [
-    'rooms:read',
-    'rooms:status',
-    'tasks:read',
-    'tasks:write',
-  ],
+  [UserRole.HOUSEKEEPING]: ['rooms:read', 'rooms:status'],
 
   [UserRole.FINANCE_READ]: [
     'payments:read',
     'reports:read',
     'reports:export',
     'invoices:read',
+    'partners:read',
   ],
 
   [UserRole.SUPPORT]: [
@@ -138,8 +128,6 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     'reviews:moderate',
     'chat:read',
     'chat:write',
-    'tasks:read',
-    'tasks:write',
   ],
 };
 
@@ -155,6 +143,8 @@ export const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; permission: Permissi
   { pattern: /^\/properties\/[^/]+$/, permission: 'properties:read' },
   { pattern: /^\/properties$/, permission: 'properties:read' },
   { pattern: /^\/room-board/, permission: 'rooms:status' },
+  { pattern: /^\/rates/, permission: 'rates:read' },
+  { pattern: /^\/room-rates/, permission: 'rates:read' },
   { pattern: /^\/services/, permission: 'properties:read' },
   { pattern: /^\/service-catalog/, permission: 'properties:read' },
   { pattern: /^\/bookings\/[^/]+$/, permission: 'bookings:read' },
@@ -163,11 +153,10 @@ export const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; permission: Permissi
   { pattern: /^\/reviews/, permission: 'reviews:read' },
   { pattern: /^\/chat/, permission: 'chat:read' },
   { pattern: /^\/reports/, permission: 'reports:read' },
-  { pattern: /^\/users/, permission: 'users:read' },
   { pattern: /^\/audit-log/, permission: 'audit:read' },
-  { pattern: /^\/tasks/, permission: 'tasks:read' },
   { pattern: /^\/invoices/, permission: 'invoices:read' },
   { pattern: /^\/guests/, permission: 'guests:read' },
+  { pattern: /^\/partners/, permission: 'partners:read' },
 ];
 
 /**
@@ -203,7 +192,6 @@ export function getRoutePermission(path: string): Permission | undefined {
 export function canAccessRoute(role: UserRole, path: string): boolean {
   const permission = getRoutePermission(path);
   if (!permission) {
-    // Route doesn't require a specific permission (e.g., dashboard home)
     return true;
   }
   return hasPermission(role, permission);

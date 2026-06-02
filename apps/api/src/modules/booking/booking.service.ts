@@ -20,13 +20,28 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import * as QRCode from 'qrcode';
+import { User } from '../auth/entities/user.entity';
+import { createBookingQrDataUrl } from './booking-qr.util';
+import {
+  generateBookingCode,
+  isBookingCodeFormat,
+  isUuidFormat,
+  normalizeBookingCodeInput,
+} from './booking-code.util';
+import { makeBookingGroupRef } from './booking-group.util';
+
+export interface GroupBookingLineInput {
+  roomTypeId: string;
+  quantity: number;
+}
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   Booking,
+  BookingSource,
   BookingStatus,
   PaymentStatus,
 } from './entities/booking.entity';
+import { InventoryService } from '../channel/inventory/inventory.service';
 import { BookingHold } from './entities/booking-hold.entity';
 import { BookingLineItem } from './entities/booking-line-item.entity';
 import { IdempotencyKey } from './entities/idempotency-key.entity';
@@ -84,13 +99,54 @@ export class BookingService {
     private chargeRepo: Repository<BookingCharge>,
     @InjectRepository(Invoice)
     private invoiceRepo: Repository<Invoice>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
     private dataSource: DataSource,
     private notificationService: NotificationService,
     private jwtService: JwtService,
     private config: ConfigService,
     private mailService: MailService,
     private guestService: GuestService,
+    private inventoryService: InventoryService,
   ) {}
+
+  /** Gán mã 6 ký tự duy nhất (idempotent). */
+  async ensureBookingCode(
+    bookingId: string,
+    manager?: EntityManager,
+  ): Promise<string> {
+    const repo = manager ? manager.getRepository(Booking) : this.bookingRepo;
+    const booking = await repo.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.bookingCode) return booking.bookingCode;
+
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const code = generateBookingCode();
+      const clash = await repo.exist({ where: { bookingCode: code } });
+      if (!clash) {
+        await repo.update(bookingId, { bookingCode: code });
+        return code;
+      }
+    }
+    throw new ConflictException('Could not allocate booking code');
+  }
+
+  /** My Stay: UUID (cũ) hoặc mã 6 ký tự. */
+  async resolveBookingIdForGuest(input: string): Promise<string> {
+    const trimmed = input.trim();
+    if (isUuidFormat(trimmed)) return trimmed;
+    const code = normalizeBookingCodeInput(trimmed);
+    if (isBookingCodeFormat(code)) {
+      const booking = await this.bookingRepo.findOne({
+        where: { bookingCode: code },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+      return booking.id;
+    }
+    throw new BadRequestException(
+      'Mã đặt phòng không hợp lệ (6 ký tự chữ/số)',
+    );
+  }
 
   /**
    * After payment: assign a physical room and mark RESERVED (chờ check-in tại quầy).
@@ -168,53 +224,13 @@ export class BookingService {
     return this.computeAvailability(propertyId, from, to, this.dataSource.manager);
   }
 
-  async getDailyAvailability(
-    propertyId: string,
-    roomTypeId: string,
-    from: string,
-    to: string,
-  ): Promise<{ date: string; available: number; total: number }[]> {
-    const em = this.dataSource.manager;
-    const nights = this.generateNightDates(from, to);
-    const roomType = await em.findOne(RoomType, { where: { id: roomTypeId, propertyId } });
-    if (!roomType) throw new NotFoundException('Room type not found');
-
-    const totalRooms = await em.count(Room, {
-      where: { propertyId, roomTypeId },
-    });
-
-    const now = new Date();
-    const results: { date: string; available: number; total: number }[] = [];
-
-    for (const night of nights) {
-      const activeBookings = await em.count(Booking, {
-        where: {
-          propertyId,
-          roomTypeId,
-          status: In([BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN]),
-          checkIn: LessThan(this.addDays(night, 1)),
-          checkOut: Not(LessThan(this.addDays(night, 1))),
-        } as any,
-      });
-
-      const activeHolds = await em
-        .createQueryBuilder(BookingHold, 'h')
-        .where('h.property_id = :propertyId', { propertyId })
-        .andWhere('h.room_type_id = :roomTypeId', { roomTypeId })
-        .andWhere('h.released_at IS NULL')
-        .andWhere('h.expires_at > :now', { now })
-        .andWhere(':night = ANY(h.nights)', { night })
-        .getCount();
-
-      const available = Math.max(0, totalRooms - activeBookings - activeHolds);
-      results.push({
-        date: night,
-        available,
-        total: totalRooms,
-      });
-    }
-
-    return results;
+  getAvailabilityCalendar(propertyId: string, from: string, to: string) {
+    return this.inventoryService.computeDailyAvailabilityCalendar(
+      propertyId,
+      from,
+      to,
+      this.dataSource.manager,
+    );
   }
 
   /**
@@ -227,50 +243,12 @@ export class BookingService {
     to: string,
     em: EntityManager,
   ): Promise<AvailabilityResult[]> {
-    const nights = this.generateNightDates(from, to);
-    const roomTypes = await em.find(RoomType, { where: { propertyId } });
-    const results: AvailabilityResult[] = [];
-    const now = new Date();
-
-    for (const rt of roomTypes) {
-      const totalRooms = await em.count(Room, {
-        where: { propertyId, roomTypeId: rt.id },
-      });
-
-      let minAvailable = totalRooms;
-      for (const night of nights) {
-        const activeBookings = await em.count(Booking, {
-          where: {
-            propertyId,
-            roomTypeId: rt.id,
-            status: In([BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN]),
-            checkIn: LessThan(this.addDays(night, 1)),
-            checkOut: Not(LessThan(this.addDays(night, 1))),
-          } as any,
-        });
-
-        // Only holds overlapping this night (not all active holds for the type)
-        const activeHolds = await em
-          .createQueryBuilder(BookingHold, 'h')
-          .where('h.property_id = :propertyId', { propertyId })
-          .andWhere('h.room_type_id = :roomTypeId', { roomTypeId: rt.id })
-          .andWhere('h.released_at IS NULL')
-          .andWhere('h.expires_at > :now', { now })
-          .andWhere(':night = ANY(h.nights)', { night })
-          .getCount();
-
-        const available = totalRooms - activeBookings - activeHolds;
-        if (available < minAvailable) minAvailable = available;
-      }
-
-      results.push({
-        roomTypeId: rt.id,
-        roomTypeName: rt.name,
-        available: Math.max(0, minAvailable),
-      });
-    }
-
-    return results;
+    return this.inventoryService.computeAvailabilitySummary(
+      propertyId,
+      from,
+      to,
+      em,
+    );
   }
 
   // ─── Hold ─────────────────────────────────────────────────────────────────
@@ -300,24 +278,13 @@ export class BookingService {
         throw new BadRequestException('At least one night is required');
       }
 
-      // Must match checkAvailability: `to` is checkout date (day after last night),
-      // not the last night itself — otherwise we under-count nights vs step 2 UI.
-      const stayFrom = this.toDateString(dto.nights[0]);
-      const stayTo = this.addDays(dto.nights[dto.nights.length - 1], 1);
-
-      const avail = await this.computeAvailability(
+      const holdNights = dto.nights.map((n) => this.toDateString(n));
+      await this.inventoryService.assertCanReserve(
         dto.propertyId,
-        stayFrom,
-        stayTo,
+        dto.roomTypeId,
+        holdNights,
         queryRunner.manager,
       );
-      const rtAvail = avail.find((a) => a.roomTypeId === dto.roomTypeId);
-      if (!rtAvail || rtAvail.available <= 0) {
-        throw new ConflictException({
-          code: 'ROOM_UNAVAILABLE',
-          message: 'No rooms available for the selected dates',
-        });
-      }
 
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + property.holdTtlSeconds);
@@ -330,6 +297,15 @@ export class BookingService {
       });
 
       const saved = await queryRunner.manager.save(hold);
+
+      await this.inventoryService.adjustHeld(
+        dto.propertyId,
+        dto.roomTypeId,
+        holdNights,
+        1,
+        queryRunner.manager,
+      );
+
       await queryRunner.commitTransaction();
       return saved;
     } catch (err) {
@@ -343,18 +319,40 @@ export class BookingService {
   @Cron(CronExpression.EVERY_MINUTE)
   async cleanupExpiredHolds() {
     this.logger.log('Running cleanup job for expired holds...');
-    const result = await this.holdRepo
-      .createQueryBuilder()
-      .update()
-      .set({ releasedAt: new Date() })
-      .where(
-        'expires_at < :now AND released_at IS NULL AND booking_id IS NULL',
-        { now: new Date() },
-      )
-      .execute();
+    const now = new Date();
+    const expired = await this.holdRepo.find({
+      where: {
+        releasedAt: IsNull(),
+        bookingId: IsNull(),
+        expiresAt: LessThan(now),
+      },
+    });
 
-    if (result.affected && result.affected > 0) {
-      this.logger.log(`Released ${result.affected} expired holds`);
+    if (!expired.length) return;
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      for (const hold of expired) {
+        const nights = hold.nights.map((n) => this.toDateString(n));
+        await this.inventoryService.adjustHeld(
+          hold.propertyId,
+          hold.roomTypeId,
+          nights,
+          -1,
+          queryRunner.manager,
+        );
+        hold.releasedAt = now;
+        await queryRunner.manager.save(hold);
+      }
+      await queryRunner.commitTransaction();
+      this.logger.log(`Released ${expired.length} expired holds`);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`cleanupExpiredHolds failed: ${(err as Error).message}`);
+    } finally {
+      await queryRunner.release();
     }
   }
 
@@ -364,9 +362,30 @@ export class BookingService {
     });
     if (!hold) return { success: true, message: 'Hold already released or not found' };
 
-    hold.releasedAt = new Date();
-    await this.holdRepo.save(hold);
-    return { success: true };
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      if (!hold.bookingId) {
+        const nights = hold.nights.map((n) => this.toDateString(n));
+        await this.inventoryService.adjustHeld(
+          hold.propertyId,
+          hold.roomTypeId,
+          nights,
+          -1,
+          queryRunner.manager,
+        );
+      }
+      hold.releasedAt = new Date();
+      await queryRunner.manager.save(hold);
+      await queryRunner.commitTransaction();
+      return { success: true };
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ─── Booking ──────────────────────────────────────────────────────────────
@@ -413,11 +432,15 @@ export class BookingService {
         1,
       );
 
+      const holdNights = hold.nights.map((n) => this.toDateString(n));
+
       const booking = queryRunner.manager.create(Booking, {
         propertyId: hold.propertyId,
         roomTypeId: hold.roomTypeId,
         guestId: dto.guestId,
+        partnerId: dto.partnerId ?? null,
         status: BookingStatus.CONFIRMED,
+        source: BookingSource.DIRECT,
         checkIn: checkInDate,
         checkOut: checkOutDate,
         paymentStatus: PaymentStatus.PENDING,
@@ -434,6 +457,13 @@ export class BookingService {
       });
 
       const savedBooking = await queryRunner.manager.save(booking);
+
+      await this.inventoryService.transferHoldToSold(
+        hold.propertyId,
+        hold.roomTypeId,
+        holdNights,
+        queryRunner.manager,
+      );
 
       hold.bookingId = savedBooking.id;
       hold.releasedAt = new Date();
@@ -466,6 +496,8 @@ export class BookingService {
       savedBooking.totalAmount = totalAmount;
       await queryRunner.manager.save(savedBooking);
 
+      await this.ensureBookingCode(savedBooking.id, queryRunner.manager);
+
       await queryRunner.manager.save(
         AuditLog,
         queryRunner.manager.create(AuditLog, {
@@ -497,6 +529,209 @@ export class BookingService {
         savedBooking,
       );
       return savedBooking;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Đặt nhiều phòng (cùng hoặc khác loại) trong một giao dịch — gắn groupRef trên notes.
+   */
+  async createGroupBookings(
+    propertyId: string,
+    nights: string[],
+    lines: GroupBookingLineInput[],
+    guestId: string,
+    partnerId: string | null,
+    actorId: string,
+  ): Promise<{ bookings: Booking[]; groupRef: string; totalAmount: number }> {
+    if (!lines.length) {
+      throw new BadRequestException('At least one room line is required');
+    }
+
+    const groupRef = makeBookingGroupRef();
+    const idempotencyKey = `public-group-${groupRef}`;
+    const requestHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ propertyId, nights, lines, guestId, groupRef }))
+      .digest('hex');
+
+    const cached = await this.checkIdempotency(idempotencyKey, actorId, requestHash);
+    if (cached) {
+      const parsed = cached as { bookings: Booking[]; groupRef: string; totalAmount: number };
+      if (parsed?.bookings?.length) return parsed;
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const property = await queryRunner.manager.findOne(Property, {
+        where: { id: propertyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!property) throw new NotFoundException('Property not found');
+      if (!nights.length) {
+        throw new BadRequestException('At least one night is required');
+      }
+
+      const holdNights = nights.map((n) => this.toDateString(n));
+      const checkInDate = holdNights[0];
+      const checkOutDate = this.addDays(
+        holdNights[holdNights.length - 1],
+        1,
+      );
+
+      const policy = await queryRunner.manager.findOne(CancellationPolicy, {
+        where: { propertyId, isActive: true },
+        order: { createdAt: 'DESC' },
+      });
+
+      const policySnapshot = policy
+        ? {
+            free_cancel_until_hours_before_checkin:
+              policy.freeCancelUntilHoursBeforeCheckin,
+            fee_rule: policy.feeRuleRef,
+            no_show_rule: policy.noShowRule,
+            policy_version: policy.policyVersion,
+            snapshotted_at: new Date().toISOString(),
+          }
+        : undefined;
+
+      const expiresAt = new Date();
+      expiresAt.setSeconds(expiresAt.getSeconds() + property.holdTtlSeconds);
+
+      const savedBookings: Booking[] = [];
+      let groupTotal = 0;
+
+      for (const line of lines) {
+        const rt = await queryRunner.manager.findOne(RoomType, {
+          where: { id: line.roomTypeId, propertyId },
+        });
+        if (!rt) {
+          throw new NotFoundException(`Room type ${line.roomTypeId} not found`);
+        }
+
+        for (let u = 0; u < line.quantity; u++) {
+          await this.inventoryService.assertCanReserve(
+            propertyId,
+            line.roomTypeId,
+            holdNights,
+            queryRunner.manager,
+          );
+
+          const hold = await queryRunner.manager.save(
+            queryRunner.manager.create(BookingHold, {
+              propertyId,
+              roomTypeId: line.roomTypeId,
+              nights,
+              expiresAt,
+            }),
+          );
+
+          await this.inventoryService.adjustHeld(
+            propertyId,
+            line.roomTypeId,
+            holdNights,
+            1,
+            queryRunner.manager,
+          );
+
+          const booking = queryRunner.manager.create(Booking, {
+            propertyId,
+            roomTypeId: line.roomTypeId,
+            guestId,
+            partnerId,
+            status: BookingStatus.CONFIRMED,
+            source: BookingSource.DIRECT,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            paymentStatus: PaymentStatus.PENDING,
+            notes: groupRef,
+            policySnapshot,
+          });
+
+          const savedBooking = await queryRunner.manager.save(booking);
+
+          await this.inventoryService.transferHoldToSold(
+            propertyId,
+            line.roomTypeId,
+            holdNights,
+            queryRunner.manager,
+          );
+
+          hold.bookingId = savedBooking.id;
+          hold.releasedAt = new Date();
+          await queryRunner.manager.save(hold);
+
+          let totalAmount = 0;
+          for (const night of holdNights) {
+            const rate = await queryRunner.manager.findOne(DailyRate, {
+              where: { propertyId, roomTypeId: line.roomTypeId, night },
+            });
+            const unitPrice = rate
+              ? Number(rate.amount)
+              : Number(rt.basePrice || 0);
+            await queryRunner.manager.save(
+              queryRunner.manager.create(BookingLineItem, {
+                bookingId: savedBooking.id,
+                night,
+                unitPrice,
+                currency: rate?.currency || 'VND',
+              }),
+            );
+            totalAmount += unitPrice;
+          }
+
+          savedBooking.totalAmount = totalAmount;
+          await queryRunner.manager.save(savedBooking);
+          await this.ensureBookingCode(savedBooking.id, queryRunner.manager);
+
+          groupTotal += totalAmount;
+          savedBookings.push(savedBooking);
+        }
+      }
+
+      await queryRunner.manager.save(
+        AuditLog,
+        queryRunner.manager.create(AuditLog, {
+          actorId,
+          action: 'booking.create_group',
+          entityType: 'bookings',
+          entityId: savedBookings[0]?.id,
+          after: { groupRef, count: savedBookings.length, groupTotal } as any,
+        }),
+      );
+
+      await queryRunner.commitTransaction();
+
+      const result = {
+        bookings: savedBookings,
+        groupRef,
+        totalAmount: groupTotal,
+      };
+
+      await this.saveIdempotency(idempotencyKey, actorId, requestHash, result);
+
+      for (const b of savedBookings) {
+        try {
+          await this.notificationService.sendPushNotification(
+            b.guestId,
+            'booking.confirmed',
+            b.id,
+          );
+        } catch (notifErr) {
+          this.logger.error(
+            `Failed to send group booking notification: ${(notifErr as Error).message}`,
+          );
+        }
+      }
+
+      return result;
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -710,11 +945,13 @@ export class BookingService {
     return crypto.createHash('sha256').update(value).digest('hex');
   }
 
-  private normalizeCheckInOccupants(dto: CheckInDto): CheckInOccupantDto[] {
+  private normalizeCheckInOccupants(
+    dto: CheckInDto,
+  ): Array<CheckInOccupantDto & { fullName: string }> {
     if (dto.occupants?.length) {
       return dto.occupants.map((o) => ({
         ...o,
-        fullName: o.fullName.trim(),
+        fullName: (o.fullName ?? '').trim(),
         idDocumentNumber: o.idDocumentNumber.replace(/\s+/g, '').trim(),
       }));
     }
@@ -789,7 +1026,26 @@ export class BookingService {
       }
     }
 
-    await this.bookingRepo.save(booking);
+    const cancelNights = this.generateNightDates(booking.checkIn, booking.checkOut);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await this.inventoryService.adjustSold(
+        booking.propertyId,
+        booking.roomTypeId,
+        cancelNights,
+        -1,
+        queryRunner.manager,
+      );
+      await queryRunner.manager.save(booking);
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
 
     await this.auditRepo.save(
       this.auditRepo.create({
@@ -1240,6 +1496,40 @@ export class BookingService {
 
   // ─── Digital Check-in (QR / PIN) ──────────────────────────────────────────
 
+  /** Tự tạo mã QR check-in sau thanh toán (idempotent). */
+  async ensureCheckinTokenForPaidBooking(bookingId: string): Promise<void> {
+    const booking = await this.bookingRepo.findOne({ where: { id: bookingId } });
+    if (!booking) return;
+    await this.ensureBookingCode(bookingId);
+    if (booking.status !== BookingStatus.CONFIRMED) return;
+    if (booking.paymentStatus !== PaymentStatus.PAID) return;
+
+    const tokenStillValid =
+      !!booking.checkinToken &&
+      !!booking.checkinTokenExpiresAt &&
+      booking.checkinTokenExpiresAt > new Date();
+    if (tokenStillValid) return;
+
+    const systemUser = await this.userRepo.findOne({
+      where: { email: 'admin@hotel.com' },
+    });
+    const actorId = systemUser?.id;
+    if (!actorId) {
+      this.logger.warn(
+        'ensureCheckinTokenForPaidBooking: admin@hotel.com not found — skip auto QR',
+      );
+      return;
+    }
+
+    try {
+      await this.generateCheckinToken(bookingId, actorId);
+    } catch (err) {
+      this.logger.error(
+        `ensureCheckinTokenForPaidBooking failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
   async generateCheckinToken(bookingId: string, actorId: string) {
     const booking = await this.bookingRepo.findOne({
       where: { id: bookingId },
@@ -1283,10 +1573,12 @@ export class BookingService {
       }),
     );
 
-    // Generate QR data URL (base64 PNG) — non-blocking
+    const bookingCode = await this.ensureBookingCode(bookingId);
+
+    // QR tra cứu tại quầy — mã 6 ký tự (không nhét JWT dài vào email)
     let qrDataUrl = '';
     try {
-      qrDataUrl = await QRCode.toDataURL(token, { width: 250, margin: 2 });
+      qrDataUrl = await createBookingQrDataUrl(bookingCode);
     } catch (qrErr) {
       this.logger.error(`QR generation error: ${qrErr.message}`);
     }
@@ -1300,7 +1592,7 @@ export class BookingService {
         .sendCheckinCredentials({
           to: guestEmail,
           guestName,
-          bookingId: booking.id,
+          bookingCode,
           pin,
           qrDataUrl,
           expiresAt,

@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { useMounted } from '@/hooks/use-mounted';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { get, patch, post } from '@/lib/api-client';
 import { toast } from '@/hooks/use-toast';
@@ -50,6 +52,7 @@ interface BookingsQueueTableProps {
 }
 
 export function BookingsQueueTable({ propertyId, mode }: BookingsQueueTableProps) {
+  const mounted = useMounted();
   const isPaidQueue = mode === 'paid';
   const queryKey = isPaidQueue ? 'bookings-paid' : 'bookings-pending';
   const paymentFilter = isPaidQueue ? PaymentStatus.PAID : PaymentStatus.PENDING;
@@ -87,6 +90,16 @@ export function BookingsQueueTable({ propertyId, mode }: BookingsQueueTableProps
     enabled: !!propertyId,
     refetchInterval: 60_000,
   });
+
+  const roomReservationByRoomId = useMemo(() => {
+    const map = new Map<string, Booking>();
+    bookings?.data?.forEach((b) => {
+      if (b.roomId && b.status === 'CONFIRMED') {
+        map.set(b.roomId, b);
+      }
+    });
+    return map;
+  }, [bookings]);
 
   const assignRoomMutation = useMutation({
     mutationFn: (bookingId: string) =>
@@ -190,7 +203,7 @@ export function BookingsQueueTable({ propertyId, mode }: BookingsQueueTableProps
             </TableHeader>
             <TableBody>
               {rows.map((booking) => {
-                const stale = isPaidQueue && isPaidStale(booking);
+                const stale = mounted && isPaidQueue && isPaidStale(booking);
                 const room = booking.room;
                 const typeRooms = roomsForType(booking.roomTypeId);
 
@@ -324,6 +337,7 @@ export function BookingsQueueTable({ propertyId, mode }: BookingsQueueTableProps
                             <FrontDeskCheckInDialog
                               booking={booking}
                               propertyId={propertyId}
+                              roomReservationByRoomId={roomReservationByRoomId}
                               compact
                             />
                             <Button

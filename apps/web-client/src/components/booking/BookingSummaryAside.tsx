@@ -1,11 +1,9 @@
 import { Users } from 'lucide-react';
 import { getRoomPresentation } from '../../data/room-presentations';
+import type { CartLine } from './BookingRoomCart';
 
 interface BookingSummaryAsideProps {
-  roomName: string;
-  description: string | null;
-  amenities: string[];
-  maxOccupancy: number;
+  lines: CartLine[];
   checkIn: string;
   checkOut: string;
   adults: number;
@@ -21,23 +19,31 @@ function formatVnd(n: number) {
 }
 
 export function BookingSummaryAside({
-  roomName,
-  description,
-  amenities,
-  maxOccupancy,
+  lines,
   checkIn,
   checkOut,
   adults,
   children,
   totalAmount,
 }: BookingSummaryAsideProps) {
-  const presentation = getRoomPresentation({
-    name: roomName,
-    description,
-    amenities,
-  });
+  const primary = lines[0];
+  const presentation = primary
+    ? getRoomPresentation({
+        name: primary.name,
+        description: null,
+        amenities: [],
+      })
+    : null;
 
   return (
+    <aside className="overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-mango-navy-900 to-mango-navy-950 text-white shadow-xl lg:col-span-2 lg:sticky lg:top-6 lg:self-start">
+      {presentation && (
+        <img
+          src={presentation.imageUrl}
+          alt={primary.name}
+          className="h-44 w-full object-cover"
+        />
+      )}
     <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm dark:border-white/10 dark:bg-gradient-to-b dark:from-mango-navy-900 dark:to-mango-navy-950 dark:text-white dark:shadow-xl lg:col-span-2 lg:sticky lg:top-6 lg:self-start">
       <img
         src={presentation.imageUrl}
@@ -48,6 +54,29 @@ export function BookingSummaryAside({
         <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-mango-accent">
           Tóm tắt đặt phòng
         </p>
+
+        <ul className="mt-4 space-y-3 border-b border-white/10 pb-4">
+          {lines.map((l) => (
+            <li key={l.roomTypeId} className="text-sm">
+              <p className="font-bold text-white">
+                {l.quantity}× {l.name}
+              </p>
+              <p className="text-white/55">
+                Tối đa {l.maxOccupancy} khách/phòng ·{' '}
+                {formatVnd(l.unitPrice * l.quantity)}
+              </p>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-3 flex items-center gap-1 text-sm text-white/60">
+          <Users className="h-4 w-4" />
+          {lines.length > 1
+            ? `${lines.reduce((s, l) => s + l.quantity, 0)} phòng`
+            : `Tối đa ${primary?.maxOccupancy ?? '—'} khách/phòng`}
+        </p>
+
+        <dl className="mt-6 space-y-3 text-sm">
         <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">{roomName}</h3>
         <p className="mt-1 flex items-center gap-1 text-sm text-slate-600 dark:text-white/60">
           <Users className="h-4 w-4 text-sky-600 dark:text-mango-accent" />

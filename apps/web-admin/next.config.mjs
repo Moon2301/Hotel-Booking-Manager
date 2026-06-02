@@ -15,6 +15,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/room-rates',
+        destination: '/rates',
+      },
+      {
         source: '/services',
         destination: '/service-catalog',
       },
