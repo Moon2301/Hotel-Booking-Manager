@@ -343,37 +343,6 @@ export interface Guest {
   updatedAt: string;
 }
 
-// === Task ===
-
-export enum TaskType {
-  CLEANING = 'CLEANING',
-  FOOD = 'FOOD',
-  TRANSPORT = 'TRANSPORT',
-  OTHER = 'OTHER',
-}
-
-export enum TaskStatus {
-  PENDING = 'PENDING',
-  IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-}
-
-export interface Task {
-  id: string;
-  bookingId: string;
-  type: TaskType;
-  status: TaskStatus;
-  assignedTo: string | null;
-  guestNote: string | null;
-  staffReport: string | null;
-  createdAt: string;
-  updatedAt: string;
-  // Relations
-  booking?: Booking;
-  assignee?: User;
-}
-
 // === Invoice ===
 
 export enum PaymentMethod {

@@ -52,6 +52,9 @@ fi
 echo "==> Running database migrations..."
 (cd apps/api && pnpm run migrate)
 
+echo "==> Rebuilding inventory calendar from bookings/holds..."
+(cd apps/api && pnpm exec ts-node scripts/rebuild-inventory-calendar.ts) || echo "    Inventory rebuild skipped."
+
 echo "==> Ensuring schema prerequisites (backfill)..."
 PGPASSWORD="${POSTGRES_PASSWORD:-hotel_secret}" psql \
   -h "${POSTGRES_HOST:-postgres}" \

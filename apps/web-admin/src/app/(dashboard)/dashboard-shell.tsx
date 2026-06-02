@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { AuthProvider, type AuthUser } from '@/providers/auth-provider';
-import { TaskNotificationsListener } from '@/components/tasks/TaskNotificationsListener';
 import { PropertySelectionProvider } from '@/providers/property-selection-provider';
 import { Sidebar, NAV_ITEMS } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -33,7 +32,6 @@ export function DashboardShell({ children, initialUser }: DashboardShellProps) {
 
   return (
     <AuthProvider initialUser={initialUser}>
-      <TaskNotificationsListener />
       <PropertySelectionProvider>
         <div className="flex h-screen overflow-hidden">
           {/* Desktop sidebar */}

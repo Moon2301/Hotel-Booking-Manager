@@ -12,6 +12,7 @@ import { PaymentController } from './payment.controller';
 import { ReconciliationTicket } from '../booking/entities/reconciliation-ticket.entity';
 import { ReconciliationService } from './reconciliation.service';
 import { BookingModule } from '../booking/booking.module';
+import { PartnerModule } from '../partner/partner.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BookingModule } from '../booking/booking.module';
       ReconciliationTicket,
     ]),
     forwardRef(() => BookingModule),
+    PartnerModule,
   ],
   controllers: [PaymentController],
   providers: [

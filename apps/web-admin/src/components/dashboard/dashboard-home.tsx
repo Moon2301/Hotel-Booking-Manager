@@ -22,10 +22,10 @@ const QUICK_HINTS: Record<string, string> = {
   '/properties': 'Danh sách cơ sở, múi giờ và cấu hình',
   '/room-board': 'Trạng thái phòng theo thời gian thực',
   '/bookings': 'Pipeline HOLD → CHECK-OUT',
-  '/tasks': 'Công việc housekeeping & dịch vụ',
   '/invoices': 'Hóa đơn và trạng thái thanh toán',
   '/guests': 'Hồ sơ khách lưu trú',
   '/reviews': 'Kiểm duyệt đánh giá',
+  '/rates': 'Giá phòng',
   '/reports': 'Occupancy, ADR và xuất báo cáo',
 };
 
@@ -146,11 +146,6 @@ export function DashboardHome() {
           value="—"
           description="Liên kết Room Board"
         />
-        <StatCard
-          title="Task đang mở"
-          value="—"
-          description="Module Tasks"
-        />
       </div>
 
       <section>
@@ -227,14 +222,6 @@ export function DashboardHome() {
               className="inline-flex items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
             >
               3. Xử lý booking
-            </Link>
-          )}
-          {can('tasks:read') && (
-            <Link
-              href="/tasks"
-              className="inline-flex items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
-            >
-              4. Phân công task
             </Link>
           )}
         </CardContent>

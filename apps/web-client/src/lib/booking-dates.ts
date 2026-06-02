@@ -15,6 +15,11 @@ export function addDaysIso(dateStr: string, days: number): string {
   return formatLocalDate(d);
 }
 
+export function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export function defaultStayDates(): { checkIn: string; checkOut: string } {
   const checkIn = new Date();
   const checkOut = new Date();

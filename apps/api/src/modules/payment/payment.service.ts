@@ -8,6 +8,7 @@ import { PaymentTransaction } from './entities/payment-transaction.entity';
 import { Booking, PaymentStatus } from '../booking/entities/booking.entity';
 import { CreatePaymentIntentDto, PaymentWebhookDto, WebhookProvider } from './dto/payment.dto';
 import { AuditLog } from '../auth/entities/audit-log.entity';
+import { PartnerCommissionService } from '../partner/partner-commission.service';
 
 @Injectable()
 export class PaymentService {
@@ -19,6 +20,7 @@ export class PaymentService {
     @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     private dataSource: DataSource,
     private config: ConfigService,
+    private readonly partnerCommissionService: PartnerCommissionService,
   ) {}
 
   async createIntent(dto: CreatePaymentIntentDto) {
@@ -66,6 +68,8 @@ export class PaymentService {
 
     booking.paymentStatus = PaymentStatus.REFUNDED;
     await this.bookingRepo.save(booking);
+
+    await this.partnerCommissionService.cancelForBooking(booking.id);
 
     // Save audit log
     await this.dataSource.getRepository(AuditLog).save(
@@ -140,6 +144,17 @@ export class PaymentService {
       }
 
       await queryRunner.commitTransaction();
+
+      if (outcome === PaymentOutcome.SUCCESS && dto.bookingId) {
+        await this.partnerCommissionService
+          .accrueForPaidBooking(dto.bookingId)
+          .catch((err) =>
+            this.logger.error(
+              `Partner commission accrual failed: ${(err as Error).message}`,
+            ),
+          );
+      }
+
       return { success: true };
     } catch (error) {
       await queryRunner.rollbackTransaction();

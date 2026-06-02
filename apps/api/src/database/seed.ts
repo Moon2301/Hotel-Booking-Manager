@@ -10,7 +10,6 @@ import {
   PaymentStatus as BookingPaymentStatus,
 } from '../modules/booking/entities/booking.entity';
 import { Invoice, PaymentMethod } from '../modules/booking/entities/invoice.entity';
-import { Task, TaskType, TaskStatus } from '../modules/task/entities/task.entity';
 import { Review, ReviewStatus } from '../modules/review/entities/review.entity';
 import {
   ServiceItem,
@@ -22,6 +21,7 @@ import {
   RateSource,
 } from '../modules/pricing/entities/daily-rate.entity';
 import { InvoiceType } from '../modules/booking/entities/invoice.entity';
+import { ReferralPartner } from '../modules/partner/entities/referral-partner.entity';
 
 const PROPERTY_NAME = 'Mango Hotel & Resort';
 
@@ -62,6 +62,9 @@ const SERVICE_CATALOG: Array<{
   { name: 'Thuê xe máy', category: 'TRANSPORT', unit: 'ngày', unitPrice: 180_000 },
   { name: 'City tour nửa ngày', category: 'TRANSPORT', unit: 'khách', unitPrice: 890_000 },
   { name: 'Gửi xe ô tô', category: 'TRANSPORT', unit: 'đêm', unitPrice: 150_000 },
+  // Yêu cầu nhanh (My Stay — ghi chú, không tính phí mặc định)
+  { name: 'Dọn phòng / bổ sung khăn tắm', category: 'OTHER', unit: 'lần', unitPrice: 0 },
+  { name: 'Gọi lễ tân / yêu cầu khác', category: 'OTHER', unit: 'lần', unitPrice: 0 },
   // Khác / tiện ích
   { name: 'Spa body massage (60 phút)', category: 'OTHER', unit: 'lần', unitPrice: 650_000 },
   { name: 'Spa body massage (90 phút)', category: 'OTHER', unit: 'lần', unitPrice: 920_000 },
@@ -79,6 +82,29 @@ const SERVICE_CATALOG: Array<{
     isActive: false,
   },
 ];
+
+async function ensureDemoReferralPartner(
+  queryRunner: ReturnType<DataSource['createQueryRunner']>,
+): Promise<string | null> {
+  if (!(await tableExists(queryRunner, 'referral_partners'))) return null;
+
+  const code = 'mango-demo';
+  const repo = queryRunner.manager.getRepository(ReferralPartner);
+  let partner = await repo.findOne({ where: { code } });
+  if (!partner) {
+    partner = await repo.save(
+      repo.create({
+        name: 'Đối tác demo Mango',
+        code,
+        commissionRatePercent: 5,
+        contactEmail: 'partner-demo@mango.local',
+        isActive: true,
+        notes: 'Link giới thiệu: http://localhost:8080/?ref=mango-demo',
+      }),
+    );
+  }
+  return partner.code;
+}
 
 async function tableExists(
   queryRunner: ReturnType<DataSource['createQueryRunner']>,
@@ -759,17 +785,6 @@ export const seedData = async (dataSource: DataSource) => {
         }),
       );
 
-      if (await tableExists(queryRunner, 'tasks')) {
-        await queryRunner.manager.save(
-          queryRunner.manager.create(Task, {
-            bookingId: booking.id,
-            type: TaskType.CLEANING,
-            status: TaskStatus.PENDING,
-            guestNote: 'Vui lòng dọn phòng giúp tôi lúc 10h',
-          }),
-        );
-      }
-
       if (await tableExists(queryRunner, 'reviews')) {
         await queryRunner.manager.save(
           queryRunner.manager.create(Review, {
@@ -788,10 +803,12 @@ export const seedData = async (dataSource: DataSource) => {
     const extraRooms = await ensureRoomInventory(queryRunner, property);
     const services = await ensureServiceCatalog(queryRunner, property);
     const demo = await ensureDemoRoomBoard(queryRunner, property);
+    const partnerCode = await ensureDemoReferralPartner(queryRunner);
 
     await queryRunner.commitTransaction();
     console.log(
-      `✅ Seeding completed — ${savedRoomTypes.length} room types, ${savedRooms.length + extraRooms} physical rooms, ${services.total} service items (${services.added} new), ${demo.rates} rates, ${demo.bookings} demo bookings`,
+      `✅ Seeding completed — ${savedRoomTypes.length} room types, ${savedRooms.length + extraRooms} physical rooms, ${services.total} service items (${services.added} new), ${demo.rates} rates, ${demo.bookings} demo bookings` +
+        (partnerCode ? `, partner ref=${partnerCode}` : ''),
     );
   } catch (err) {
     await queryRunner.rollbackTransaction();

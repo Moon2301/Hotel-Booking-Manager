@@ -1,14 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Booking, BookingStatus } from './entities/booking.entity';
 import { Room } from '../property/entities/room.entity';
+import {
+  BookingCharge,
+  BookingChargeStatus,
+} from './entities/booking-charge.entity';
 
 @Injectable()
 export class ReportingService {
   constructor(
     @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     @InjectRepository(Room) private roomRepo: Repository<Room>,
+    @InjectRepository(BookingCharge)
+    private chargeRepo: Repository<BookingCharge>,
   ) {}
 
   /**
@@ -97,9 +103,186 @@ export class ReportingService {
         adr: metrics.metrics.adr,
         occupancy: metrics.metrics.occupancyRate,
         revenue: metrics.metrics.totalRevenue,
+        roomsBooked: metrics.metrics.occupiedRoomNights,
       });
     }
 
     return data;
+  }
+
+  /**
+   * Room-nights per room type for a single calendar day (pie chart).
+   */
+  async getRoomTypeMixForDate(propertyId: string, date: string) {
+    const dayStart = new Date(`${date}T00:00:00.000Z`);
+    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+
+    const bookings = await this.bookingRepo.find({
+      where: {
+        propertyId,
+        status: In([
+          BookingStatus.CONFIRMED,
+          BookingStatus.CHECKED_IN,
+          BookingStatus.CHECKED_OUT,
+        ]),
+      },
+      relations: ['roomType'],
+    });
+
+    const counts = new Map<
+      string,
+      { roomTypeId: string; roomTypeName: string; roomsBooked: number }
+    >();
+
+    for (const b of bookings) {
+      const checkIn = new Date(b.checkIn);
+      const checkOut = new Date(b.checkOut);
+      if (checkOut <= dayStart || checkIn > dayEnd) continue;
+
+      const name = b.roomType?.name ?? 'Khác';
+      const key = b.roomTypeId;
+      const prev = counts.get(key) ?? {
+        roomTypeId: key,
+        roomTypeName: name,
+        roomsBooked: 0,
+      };
+      prev.roomsBooked += 1;
+      counts.set(key, prev);
+    }
+
+    const items = Array.from(counts.values());
+    const total = items.reduce((s, i) => s + i.roomsBooked, 0);
+
+    return {
+      date,
+      totalRoomsBooked: total,
+      items: items.map((i) => ({
+        ...i,
+        sharePercent:
+          total > 0
+            ? Math.round((i.roomsBooked / total) * 1000) / 10
+            : 0,
+      })),
+    };
+  }
+
+  /**
+   * Revenue breakdown for one calendar day (drill-down from daily chart).
+   */
+  async getDailyRevenueDetail(propertyId: string, date: string) {
+    const start = new Date(`${date}T00:00:00.000Z`);
+    const end = new Date(`${date}T23:59:59.999Z`);
+
+    const bookings = await this.bookingRepo.find({
+      where: {
+        propertyId,
+        status: In([
+          BookingStatus.CONFIRMED,
+          BookingStatus.CHECKED_IN,
+          BookingStatus.CHECKED_OUT,
+        ]),
+      },
+      relations: ['roomType'],
+    });
+
+    const byRoomType = new Map<
+      string,
+      {
+        roomTypeId: string;
+        roomTypeName: string;
+        roomsBooked: number;
+        roomRevenue: number;
+      }
+    >();
+
+    let roomRevenueTotal = 0;
+    let roomsBookedTotal = 0;
+
+    for (const b of bookings) {
+      const checkIn = new Date(b.checkIn);
+      const checkOut = new Date(b.checkOut);
+      if (checkOut <= start || checkIn > end) continue;
+
+      const bStart =
+        checkIn.getTime() < start.getTime() ? start : checkIn;
+      const bEnd =
+        checkOut.getTime() > end.getTime() ? end : checkOut;
+      const overlapDays = Math.max(
+        0,
+        Math.round(
+          (bEnd.getTime() - bStart.getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      );
+      if (overlapDays <= 0) continue;
+
+      const stayDays = Math.max(
+        1,
+        Math.round(
+          (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
+        ),
+      );
+      const dailyRate = (Number(b.totalAmount) || 0) / stayDays;
+      const dayRevenue = dailyRate * overlapDays;
+
+      roomRevenueTotal += dayRevenue;
+      roomsBookedTotal += overlapDays;
+
+      const name = b.roomType?.name ?? 'Khác';
+      const key = b.roomTypeId;
+      const prev = byRoomType.get(key) ?? {
+        roomTypeId: key,
+        roomTypeName: name,
+        roomsBooked: 0,
+        roomRevenue: 0,
+      };
+      prev.roomsBooked += overlapDays;
+      prev.roomRevenue += dayRevenue;
+      byRoomType.set(key, prev);
+    }
+
+    const roomTypeRows = Array.from(byRoomType.values())
+      .map((row) => ({
+        ...row,
+        roomRevenue: Math.round(row.roomRevenue),
+        sharePercent:
+          roomRevenueTotal > 0
+            ? Math.round((row.roomRevenue / roomRevenueTotal) * 1000) / 10
+            : 0,
+      }))
+      .sort((a, b) => b.roomRevenue - a.roomRevenue);
+
+    const charges = await this.chargeRepo
+      .createQueryBuilder('charge')
+      .innerJoin('charge.booking', 'booking')
+      .where('booking.propertyId = :propertyId', { propertyId })
+      .andWhere('charge.status = :status', {
+        status: BookingChargeStatus.POSTED,
+      })
+      .andWhere('charge.createdAt BETWEEN :start AND :end', { start, end })
+      .orderBy('charge.createdAt', 'DESC')
+      .getMany();
+
+    const serviceRevenue = charges.reduce(
+      (s, c) => s + Number(c.amount),
+      0,
+    );
+
+    return {
+      date,
+      summary: {
+        totalRevenue: Math.round(roomRevenueTotal + serviceRevenue),
+        roomRevenue: Math.round(roomRevenueTotal),
+        serviceRevenue: Math.round(serviceRevenue),
+        roomsBooked: roomsBookedTotal,
+      },
+      byRoomType: roomTypeRows,
+      serviceCharges: charges.map((c) => ({
+        id: c.id,
+        description: c.description,
+        quantity: c.quantity,
+        amount: Number(c.amount),
+        createdAt: c.createdAt,
+      })),
+    };
   }
 }

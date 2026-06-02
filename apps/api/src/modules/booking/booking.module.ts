@@ -30,8 +30,13 @@ import { PublicBookingController } from './public-booking.controller';
 import { PublicBookingService } from './public-booking.service';
 import { BookingConfirmationService } from './booking-confirmation.service';
 import { PaymentModule } from '../payment/payment.module';
+import { ChannelModule } from '../channel/channel.module';
+import { PartnerModule } from '../partner/partner.module';
 import { ServiceCatalogController } from './service-catalog.controller';
 import { BookingChargesController } from './booking-charges.controller';
+import { GuestStayController } from './guest-stay.controller';
+import { GuestStayService } from './guest-stay.service';
+import { GuestOnlyGuard } from '../auth/guards/guest-only.guard';
 
 @Module({
   imports: [
@@ -58,6 +63,8 @@ import { BookingChargesController } from './booking-charges.controller';
     GuestModule,
     forwardRef(() => AuthModule),
     forwardRef(() => PaymentModule),
+    ChannelModule,
+    PartnerModule,
   ],
   controllers: [
     BookingController,
@@ -65,6 +72,7 @@ import { BookingChargesController } from './booking-charges.controller';
     PublicBookingController,
     ServiceCatalogController,
     BookingChargesController,
+    GuestStayController,
   ],
   providers: [
     BookingService,
@@ -73,6 +81,8 @@ import { BookingChargesController } from './booking-charges.controller';
     ReportingService,
     PublicBookingService,
     BookingConfirmationService,
+    GuestStayService,
+    GuestOnlyGuard,
   ],
   exports: [
     BookingService,

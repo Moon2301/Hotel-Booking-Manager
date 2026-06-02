@@ -15,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { PublicBookingService } from './public-booking.service';
 import {
   PublicCheckoutDto,
+  PublicCheckoutGroupDto,
   PublicCreateHoldDto,
   PublicQuoteQueryDto,
 } from './dto/public-booking.dto';
@@ -35,6 +36,18 @@ export class PublicBookingController {
   @ApiOperation({ summary: 'Check room availability (public)' })
   checkAvailability(@Query() query: AvailabilityQueryDto) {
     return this.publicBookingService.checkAvailability(query);
+  }
+
+  @Get('availability/calendar')
+  @ApiOperation({
+    summary: 'Per-day availability by room type (calendar highlights)',
+  })
+  getAvailabilityCalendar(@Query() query: AvailabilityQueryDto) {
+    return this.publicBookingService.getAvailabilityCalendar(
+      query.propertyId,
+      query.from,
+      query.to,
+    );
   }
 
   @Get('quote')
@@ -63,6 +76,21 @@ export class PublicBookingController {
       req.ip ||
       '127.0.0.1';
     return this.publicBookingService.checkout(dto, ipAddr);
+  }
+
+  @Post('checkout-group')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary:
+      'Đặt nhiều phòng (cùng/khác loại) — một hóa đơn & thanh toán VNPay',
+  })
+  checkoutGroup(@Body() dto: PublicCheckoutGroupDto, @Req() req: Request) {
+    const ipAddr =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.ip ||
+      '127.0.0.1';
+    return this.publicBookingService.checkoutGroup(dto, ipAddr);
   }
 
   @Get('confirmation/:bookingId')

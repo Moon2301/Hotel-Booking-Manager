@@ -39,6 +39,11 @@ export class ConfirmBookingDto {
   @ApiProperty()
   @IsUUID()
   guestId: string;
+
+  @ApiPropertyOptional({ description: 'Referral partner attribution' })
+  @IsOptional()
+  @IsUUID()
+  partnerId?: string;
 }
 
 export class AvailabilityQueryDto {

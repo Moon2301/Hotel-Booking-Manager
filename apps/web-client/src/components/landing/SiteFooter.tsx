@@ -1,26 +1,42 @@
 import { Link } from 'react-router-dom';
 import { Hexagon, ArrowUp } from 'lucide-react';
 import { SITE_NAV } from './nav-config';
+import { getPartnerLinks, getSocialLinks } from '../../data/external-links';
+import { FooterLinkList, FooterSocialIcons } from './FooterLinkList';
 
 export function SiteFooter() {
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const socialLinks = getSocialLinks();
+  const partnerLinks = getPartnerLinks();
 
   return (
-    <footer id="contact" className="relative bg-slate-200 text-slate-600 dark:bg-mango-navy-950 dark:text-white/70">
+    <footer
+      id="contact"
+      className="relative bg-slate-200 text-slate-600 dark:bg-mango-navy-950 dark:text-white/70"
+    >
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-12 md:grid-cols-3">
-          <div className="md:col-span-2">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-1">
             <div className="flex items-center gap-2">
               <Hexagon className="h-8 w-8 text-mango-accent" />
-              <span className="text-xl font-bold text-slate-900 dark:text-white">Mango Hotel</span>
+              <span className="text-xl font-bold text-slate-900 dark:text-white">
+                Mango Hotel
+              </span>
             </div>
-            <p className="mt-4 max-w-md text-sm leading-relaxed">
+            <p className="mt-4 max-w-sm text-sm leading-relaxed">
               123 Võ Nguyên Giáp, Đà Nẵng, Việt Nam
               <br />
               Hotline: (0236) 3888 999
               <br />
-              Email: contact@mangohotel.vn
+              Email:{' '}
+              <a
+                href="mailto:contact@mangohotel.vn"
+                className="text-mango-accent hover:underline"
+              >
+                contact@mangohotel.vn
+              </a>
             </p>
+            <FooterSocialIcons links={socialLinks} />
           </div>
 
           <div>
@@ -30,7 +46,16 @@ export function SiteFooter() {
             <ul className="space-y-2 text-sm">
               {SITE_NAV.map((item) => (
                 <li key={item.href}>
-                  {item.href.startsWith('/#') || item.href.startsWith('#') ? (
+                  {item.external ? (
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="transition-colors hover:text-mango-accent"
+                    >
+                      {item.label}
+                    </a>
+                  ) : item.href.startsWith('/#') || item.href.startsWith('#') ? (
                     <a
                       href={item.href}
                       className="transition-colors hover:text-mango-accent"
@@ -48,18 +73,41 @@ export function SiteFooter() {
                 </li>
               ))}
               <li>
-                <Link to="/book" className="transition-colors hover:text-mango-accent">
+                <Link
+                  to="/book"
+                  className="transition-colors hover:text-mango-accent"
+                >
                   Đặt phòng
                 </Link>
               </li>
             </ul>
           </div>
 
+          <div>
+            <p className="mb-4 text-xs font-bold uppercase tracking-wider text-mango-accent">
+              Mạng xã hội
+            </p>
+            <FooterLinkList links={socialLinks} showIcons />
+          </div>
+
+          <div>
+            <p className="mb-4 text-xs font-bold uppercase tracking-wider text-mango-accent">
+              Đối tác
+            </p>
+            <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-white/45">
+              Đặt phòng qua các kênh đối tác hoặc xem vị trí trên bản đồ.
+            </p>
+            <FooterLinkList links={partnerLinks} showIcons />
+          </div>
         </div>
 
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 text-xs sm:flex-row">
-          <p>&copy; {new Date().getFullYear()} Mango Hotel. All rights reserved.</p>
-          <p className="text-white/40">Powered by NestJS, React & Vite</p>
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-300/60 pt-8 text-xs dark:border-white/10 sm:flex-row">
+          <p className="text-slate-500 dark:text-white/50">
+            &copy; {new Date().getFullYear()} Mango Hotel. All rights reserved.
+          </p>
+          <p className="text-slate-400 dark:text-white/35">
+            Đặt trực tiếp trên website để ưu đãi tốt nhất.
+          </p>
         </div>
       </div>
 

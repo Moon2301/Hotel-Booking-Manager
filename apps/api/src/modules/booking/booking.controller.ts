@@ -49,7 +49,11 @@ export class BookingController {
   // ─── Reporting ────────────────────────────────────────────────────────────
 
   @Get('reports/performance')
-  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER)
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FINANCE_READ,
+  )
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get ADR and Occupancy reports for a date range' })
   getPerformanceReport(
@@ -61,7 +65,11 @@ export class BookingController {
   }
 
   @Get('reports/daily-chart')
-  @Auth(UserRole.SUPER_ADMIN, UserRole.PROPERTY_MANAGER)
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FINANCE_READ,
+  )
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get daily chart data for Recharts' })
   getDailyChartData(
@@ -70,6 +78,38 @@ export class BookingController {
     @Query('endDate') endDate: string,
   ) {
     return this.reportingService.getDailyChartData(propertyId, startDate, endDate);
+  }
+
+  @Get('reports/room-type-mix')
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FINANCE_READ,
+  )
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Room-type booking mix for one day (pie chart)',
+  })
+  getRoomTypeMix(
+    @Query('propertyId') propertyId: string,
+    @Query('date') date: string,
+  ) {
+    return this.reportingService.getRoomTypeMixForDate(propertyId, date);
+  }
+
+  @Get('reports/daily-detail')
+  @Auth(
+    UserRole.SUPER_ADMIN,
+    UserRole.PROPERTY_MANAGER,
+    UserRole.FINANCE_READ,
+  )
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Daily revenue drill-down for one date' })
+  getDailyDetail(
+    @Query('propertyId') propertyId: string,
+    @Query('date') date: string,
+  ) {
+    return this.reportingService.getDailyRevenueDetail(propertyId, date);
   }
 
   // ─── Availability ─────────────────────────────────────────────────────────

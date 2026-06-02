@@ -9,6 +9,8 @@ import { Invoice, InvoiceType, PaymentMethod } from './entities/invoice.entity';
 import { Booking, PaymentStatus } from './entities/booking.entity';
 import { AuditLog } from '../auth/entities/audit-log.entity';
 import { BookingService } from './booking.service';
+import { PartnerCommissionService } from '../partner/partner-commission.service';
+import { getBookingGroupRef } from './booking-group.util';
 
 @Injectable()
 export class InvoiceService {
@@ -17,6 +19,7 @@ export class InvoiceService {
     @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     private readonly bookingService: BookingService,
+    private readonly partnerCommissionService: PartnerCommissionService,
   ) {}
 
   async createInvoice(
@@ -92,13 +95,7 @@ export class InvoiceService {
 
     const saved = await this.invoiceRepo.save(invoice);
 
-    // Also update booking payment status
-    const booking = await this.bookingRepo.findOne({ where: { id: invoice.bookingId } });
-    if (booking) {
-      booking.paymentStatus = PaymentStatus.PAID;
-      await this.bookingRepo.save(booking);
-      await this.bookingService.assignRoomOnPayment(booking.id, actorId);
-    }
+    await this.settleBookingsAfterPayment(invoice.bookingId, actorId);
 
     // Audit log
     await this.auditRepo.save(
@@ -135,14 +132,32 @@ export class InvoiceService {
 
     const saved = await this.invoiceRepo.save(invoice);
 
-    // Also update booking payment status
-    const booking = await this.bookingRepo.findOne({ where: { id: invoice.bookingId } });
-    if (booking) {
-      booking.paymentStatus = PaymentStatus.PAID;
-      await this.bookingRepo.save(booking);
-      await this.bookingService.assignRoomOnPayment(booking.id, 'vnpay');
-    }
+    await this.settleBookingsAfterPayment(invoice.bookingId, 'vnpay');
 
     return saved;
+  }
+
+  /** Một hóa đơn nhóm — đánh dấu PAID cho mọi booking cùng groupRef. */
+  private async settleBookingsAfterPayment(
+    primaryBookingId: string,
+    actorId: string,
+  ): Promise<void> {
+    const primary = await this.bookingRepo.findOne({
+      where: { id: primaryBookingId },
+    });
+    if (!primary) return;
+
+    const groupRef = getBookingGroupRef(primary.notes);
+    const bookings = groupRef
+      ? await this.bookingRepo.find({ where: { notes: groupRef } })
+      : [primary];
+
+    for (const booking of bookings) {
+      if (booking.paymentStatus === PaymentStatus.PAID) continue;
+      booking.paymentStatus = PaymentStatus.PAID;
+      await this.bookingRepo.save(booking);
+      await this.bookingService.assignRoomOnPayment(booking.id, actorId);
+      await this.partnerCommissionService.accrueForPaidBooking(booking.id);
+    }
   }
 }

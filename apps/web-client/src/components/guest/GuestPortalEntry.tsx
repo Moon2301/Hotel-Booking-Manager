@@ -20,11 +20,11 @@ interface GuestPortalEntryProps {
 }
 
 const TAB_HINTS: Record<string, string> = {
-  service:
-    'Gửi yêu cầu chi tiết (dọn phòng, gọi món, xe…) chỉ sau khi đặt phòng. Chưa có mã? Xem tiện ích trên trang chủ hoặc đặt phòng trước.',
   invoice:
     'Thanh toán hoá đơn chỉ dành cho booking đã tạo. Chưa có mã? Hãy đặt phòng trước.',
   stay: 'Xem thông tin lưu trú sau khi bạn đã có mã đặt phòng.',
+  service:
+    'Yêu cầu dịch vụ phòng sau khi đăng nhập My Stay (cần đã check-in tại quầy).',
 };
 
 export function GuestPortalEntry({

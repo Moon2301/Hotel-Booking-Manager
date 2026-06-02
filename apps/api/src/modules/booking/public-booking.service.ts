@@ -20,9 +20,14 @@ import {
   CreateHoldDto,
   AvailabilityQueryDto,
 } from './dto/booking.dto';
-import { PublicCheckoutDto, PublicQuoteQueryDto } from './dto/public-booking.dto';
+import {
+  PublicCheckoutDto,
+  PublicCheckoutGroupDto,
+  PublicQuoteQueryDto,
+} from './dto/public-booking.dto';
 import { ConfigService } from '@nestjs/config';
 import { buildBookingQrPayload } from './booking-token.util';
+import { PartnerCommissionService } from '../partner/partner-commission.service';
 
 @Injectable()
 export class PublicBookingService {
@@ -31,6 +36,7 @@ export class PublicBookingService {
     private readonly guestService: GuestService,
     private readonly invoiceService: InvoiceService,
     private readonly vnpayService: VnpayService,
+    private readonly partnerCommissionService: PartnerCommissionService,
     @InjectRepository(Property)
     private readonly propertyRepo: Repository<Property>,
     @InjectRepository(RoomType)
@@ -77,6 +83,10 @@ export class PublicBookingService {
 
   checkAvailability(query: AvailabilityQueryDto) {
     return this.bookingService.checkAvailability(query);
+  }
+
+  getAvailabilityCalendar(propertyId: string, from: string, to: string) {
+    return this.bookingService.getAvailabilityCalendar(propertyId, from, to);
   }
 
   async getQuote(query: PublicQuoteQueryDto) {
@@ -138,9 +148,13 @@ export class PublicBookingService {
       throw new NotFoundException('System user not configured for public booking');
     }
 
+    const partnerId = await this.partnerCommissionService.resolveActivePartnerId(
+      dto.partnerRef,
+    );
+
     const booking = await this.bookingService.createBooking(
       idempotencyKey,
-      { holdId: dto.holdId, guestId: guest.id },
+      { holdId: dto.holdId, guestId: guest.id, partnerId: partnerId ?? undefined },
       requestHash,
       systemUser.id,
     );
@@ -183,6 +197,89 @@ export class PublicBookingService {
         paymentStatus: invoice.paymentStatus,
       },
       paymentUrl,
+    };
+  }
+
+  async checkoutGroup(dto: PublicCheckoutGroupDto, ipAddr: string) {
+    const guest = await this.guestService.findOrCreate({
+      fullName: dto.fullName.trim(),
+      email: dto.email.trim().toLowerCase(),
+      phone: dto.phone.trim(),
+    });
+
+    const systemUser = await this.userRepo.findOne({
+      where: { email: 'admin@hotel.com' },
+    });
+    if (!systemUser) {
+      throw new NotFoundException('System user not configured for public booking');
+    }
+
+    const partnerId = await this.partnerCommissionService.resolveActivePartnerId(
+      dto.partnerRef,
+    );
+
+    const nights = this.bookingService.generateNightDatesPublic(
+      dto.checkIn,
+      dto.checkOut,
+    );
+    if (!nights.length) {
+      throw new NotFoundException('Invalid stay dates');
+    }
+
+    const { bookings, totalAmount } =
+      await this.bookingService.createGroupBookings(
+        dto.propertyId,
+        nights,
+        dto.lines.map((l) => ({
+          roomTypeId: l.roomTypeId,
+          quantity: l.quantity,
+        })),
+        guest.id,
+        partnerId,
+        systemUser.id,
+      );
+
+    const primary = bookings[0];
+    const invoice = await this.invoiceService.createInvoice(
+      primary.id,
+      totalAmount,
+      InvoiceType.DEPOSIT,
+    );
+
+    const paymentUrl = this.vnpayService.createPaymentUrl(
+      invoice.id,
+      Number(invoice.totalAmount),
+      ipAddr,
+    );
+
+    const roomSummaries = await Promise.all(
+      bookings.map(async (b) => {
+        const full = await this.bookingRepo.findOne({
+          where: { id: b.id },
+          relations: ['roomType'],
+        });
+        return {
+          bookingId: b.id,
+          roomTypeName: full?.roomType?.name ?? '—',
+          totalAmount: Number(b.totalAmount),
+        };
+      }),
+    );
+
+    return {
+      bookings: roomSummaries,
+      guest: {
+        fullName: guest.fullName,
+        email: guest.email,
+        phone: guest.phone,
+      },
+      invoice: {
+        id: invoice.id,
+        totalAmount: Number(invoice.totalAmount),
+        paymentStatus: invoice.paymentStatus,
+      },
+      paymentUrl,
+      primaryBookingId: primary.id,
     };
   }
 

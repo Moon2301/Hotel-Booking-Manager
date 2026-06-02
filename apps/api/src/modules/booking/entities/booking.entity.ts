@@ -7,8 +7,8 @@ import { Room } from '../../property/entities/room.entity';
 import { RoomType } from '../../property/entities/room-type.entity';
 import { Guest } from '../../guest/entities/guest.entity';
 import { Invoice } from './invoice.entity';
-import { Task } from '../../task/entities/task.entity';
 import { BookingOccupant } from './booking-occupant.entity';
+import { ReferralPartner } from '../../partner/entities/referral-partner.entity';
 
 export enum BookingStatus {
   HOLD = 'HOLD',
@@ -17,6 +17,12 @@ export enum BookingStatus {
   CHECKED_OUT = 'CHECKED_OUT',
   CANCELLED = 'CANCELLED',
   NO_SHOW = 'NO_SHOW',
+}
+
+/** DIRECT = website/PMS; CHANNEL = OTA via Channex (phase 2) */
+export enum BookingSource {
+  DIRECT = 'DIRECT',
+  CHANNEL = 'CHANNEL',
 }
 
 import { PaymentStatus } from './invoice.entity';
@@ -50,16 +56,36 @@ export class Booking {
   @JoinColumn({ name: 'guest_id' })
   guest: Guest;
 
+  @Column({ name: 'partner_id', nullable: true }) partnerId: string | null;
+  @ManyToOne(() => ReferralPartner, { nullable: true })
+  @JoinColumn({ name: 'partner_id' })
+  partner: ReferralPartner | null;
+
   @OneToMany(() => Invoice, (invoice) => invoice.booking)
   invoices: Invoice[];
-
-  @OneToMany(() => Task, (task) => task.booking)
-  tasks: Task[];
 
   @OneToMany(() => BookingOccupant, (o) => o.booking)
   occupants: BookingOccupant[];
 
   @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.HOLD }) status: BookingStatus;
+
+  @Column({
+    type: 'enum',
+    enum: BookingSource,
+    default: BookingSource.DIRECT,
+  })
+  source: BookingSource;
+
+  @Column({ name: 'channel_code', type: 'varchar', length: 64, nullable: true })
+  channelCode: string | null;
+
+  @Column({
+    name: 'external_reservation_id',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  externalReservationId: string | null;
   
   @Column({ type: 'date', name: 'check_in' }) checkIn: string;
   @Column({ type: 'date', name: 'check_out' }) checkOut: string;
