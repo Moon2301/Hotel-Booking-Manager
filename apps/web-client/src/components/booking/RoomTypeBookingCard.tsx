@@ -1,8 +1,13 @@
-import { Users, Check, Minus, Plus } from 'lucide-react';
-import { getRoomPresentation } from '../../data/room-presentations';
-import { RoomAvailabilityCalendar } from './RoomAvailabilityCalendar';
-import { useState, useEffect } from 'react';
-import { Users, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Users,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Minus,
+  Plus,
+} from 'lucide-react';
 import { getRoomPresentation } from '../../data/room-presentations';
 import { fetchDailyAvailability } from '../../lib/booking-api';
 
@@ -24,10 +29,6 @@ interface RoomTypeBookingCardProps {
   onSelect: () => void;
   onAddToCart?: () => void;
   onCartQuantityChange?: (quantity: number) => void;
-  availabilityByDate?: Record<string, number>;
-  checkIn?: string;
-  checkOut?: string;
-  calendarLoading?: boolean;
 }
 
 function formatVnd(n: number) {
@@ -37,15 +38,16 @@ function formatVnd(n: number) {
   }).format(n);
 }
 
-interface RoomDailyCalendarProps {
+function RoomDailyCalendar({
+  propertyId,
+  roomTypeId,
+}: {
   propertyId: string;
   roomTypeId: string;
-}
-
-export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarProps) {
+}) {
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth()); // 0-11
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [loading, setLoading] = useState(false);
   const [availability, setAvailability] = useState<Record<string, number>>({});
 
@@ -55,12 +57,16 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
       setLoading(true);
       try {
         const fromStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-        // next month start
         const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
         const nextYear = currentMonth === 11 ? currentYear + 1 : currentYear;
         const toStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
-        
-        const data = await fetchDailyAvailability(propertyId, roomTypeId, fromStr, toStr);
+
+        const data = await fetchDailyAvailability(
+          propertyId,
+          roomTypeId,
+          fromStr,
+          toStr,
+        );
         if (active) {
           const map: Record<string, number> = {};
           data.forEach((row) => {
@@ -74,7 +80,7 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
         if (active) setLoading(false);
       }
     }
-    load();
+    void load();
     return () => {
       active = false;
     };
@@ -100,9 +106,13 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
 
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
-  const startOffset = firstDayIndex === 0 ? 6 : firstDayIndex - 1; // Monday start
+  const startOffset = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
 
-  const calendarDays: { dateStr: string; dayNum: number; isCurrentMonth: boolean }[] = [];
+  const calendarDays: {
+    dateStr: string;
+    dayNum: number;
+    isCurrentMonth: boolean;
+  }[] = [];
 
   const prevMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
   const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
@@ -128,12 +138,24 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
 
   const weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
   const monthNames = [
-    'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
-    'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'
+    'Tháng 1',
+    'Tháng 2',
+    'Tháng 3',
+    'Tháng 4',
+    'Tháng 5',
+    'Tháng 6',
+    'Tháng 7',
+    'Tháng 8',
+    'Tháng 9',
+    'Tháng 10',
+    'Tháng 11',
+    'Tháng 12',
   ];
 
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   return (
-    <div className="flex flex-col h-full select-none">
+    <div className="flex h-full select-none flex-col">
       <style>{`
         .calendar-day-cell:hover .calendar-day-tooltip {
           opacity: 1 !important;
@@ -141,7 +163,7 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
           transform: translate(-50%, 0) scale(1) !important;
         }
       `}</style>
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between">
         <h4 className="text-xs font-bold text-slate-800 dark:text-white">
           Lịch trống ({monthNames[currentMonth]} {currentYear})
         </h4>
@@ -149,14 +171,14 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white"
+            className="rounded-md p-1 text-slate-600 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
             onClick={handleNextMonth}
-            className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white"
+            className="rounded-md p-1 text-slate-600 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
@@ -165,12 +187,12 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
 
       <div className="relative flex-1">
         {loading && (
-          <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50 backdrop-blur-[1px] dark:bg-slate-900/50">
             <Loader2 className="h-4 w-4 animate-spin text-sky-600 dark:text-mango-accent" />
           </div>
         )}
 
-        <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-slate-400 dark:text-white/40 mb-1">
+        <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-slate-400 dark:text-white/40">
           {weekdays.map((w) => (
             <div key={w}>{w}</div>
           ))}
@@ -179,27 +201,28 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
         <div className="grid grid-cols-7 gap-1 text-center">
           {calendarDays.map((day, idx) => {
             const isBooked = availability[day.dateStr] === 0;
-            const isAvailable = !isBooked && availability[day.dateStr] > 0;
-            const isPast = day.dateStr < `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-            
+            const isAvailable =
+              !isBooked && (availability[day.dateStr] ?? 0) > 0;
+            const isPast = day.dateStr < todayStr;
+
             return (
               <div
                 key={idx}
-                className="calendar-day-cell relative flex aspect-square items-center justify-center cursor-pointer"
+                className="calendar-day-cell relative flex aspect-square cursor-default items-center justify-center"
               >
                 <div
-                  className={`flex h-full w-full items-center justify-center text-[10px] rounded-full transition-all ${
+                  className={`flex h-full w-full items-center justify-center rounded-full text-[10px] transition-all ${
                     !day.isCurrentMonth
-                      ? 'text-slate-355 dark:text-white/15'
+                      ? 'text-slate-300 dark:text-white/15'
                       : isPast
-                        ? 'text-slate-400 dark:text-white/25 line-through'
-                        : 'text-slate-700 dark:text-white/80 font-medium'
+                        ? 'text-slate-400 line-through dark:text-white/25'
+                        : 'font-medium text-slate-700 dark:text-white/80'
                   } ${
                     day.isCurrentMonth && !isPast
                       ? isBooked
-                        ? 'border border-rose-500 text-rose-600 font-bold bg-rose-500/10 dark:border-rose-400 dark:text-rose-400 dark:bg-rose-400/10'
+                        ? 'border border-rose-500 bg-rose-500/10 font-bold text-rose-600 dark:border-rose-400 dark:text-rose-400'
                         : isAvailable
-                          ? 'border border-emerald-500 text-emerald-600 font-bold bg-emerald-500/5 dark:border-emerald-400 dark:text-emerald-400 dark:bg-emerald-400/5'
+                          ? 'border border-emerald-500 bg-emerald-500/5 font-bold text-emerald-600 dark:border-emerald-400 dark:text-emerald-400'
                           : ''
                       : ''
                   }`}
@@ -228,7 +251,8 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
                       fontSize: '9px',
                       fontWeight: 600,
                       border: '1px solid rgba(255, 255, 255, 0.1)',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                      boxShadow:
+                        '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                       transition: 'all 0.15s ease-in-out',
                     }}
                   >
@@ -250,7 +274,7 @@ export function RoomDailyCalendar({ propertyId, roomTypeId }: RoomDailyCalendarP
   );
 }
 
-export function RoomImageSlider({
+function RoomImageSlider({
   images,
   name,
   disabled,
@@ -298,29 +322,28 @@ export function RoomImageSlider({
           <button
             type="button"
             onClick={prevSlide}
-            className="absolute left-2 top-1/3 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/60 opacity-0 group-hover:opacity-100 z-20"
+            className="absolute left-2 top-1/3 z-20 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white opacity-0 backdrop-blur-sm transition-colors hover:bg-black/60 group-hover:opacity-100"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <button
             type="button"
             onClick={nextSlide}
-            className="absolute right-2 top-1/3 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/60 opacity-0 group-hover:opacity-100 z-20"
+            className="absolute right-2 top-1/3 z-20 -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white opacity-0 backdrop-blur-sm transition-colors hover:bg-black/60 group-hover:opacity-100"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
 
-          {/* Thumbnail preview list (4-5 images side by side with slide effect) */}
-          <div className="absolute bottom-3 left-0 right-0 px-2 flex justify-center gap-1.5 z-10 overflow-x-auto no-scrollbar">
+          <div className="absolute bottom-3 left-0 right-0 z-10 flex justify-center gap-1.5 overflow-x-auto px-2">
             {images.map((img, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={(e) => selectSlide(idx, e)}
-                className={`relative h-9 w-12 sm:h-11 sm:w-15 shrink-0 overflow-hidden rounded-md border-2 transition-all duration-300 ${
+                className={`relative h-9 w-12 shrink-0 overflow-hidden rounded-md border-2 transition-all duration-300 sm:h-11 sm:w-14 ${
                   currentIndex === idx
-                    ? 'border-mango-accent scale-105 shadow-md shadow-mango-accent/30'
-                    : 'border-white/40 opacity-70 hover:opacity-100 hover:scale-105'
+                    ? 'scale-105 border-mango-accent shadow-md shadow-mango-accent/30'
+                    : 'border-white/40 opacity-70 hover:scale-105 hover:opacity-100'
                 }`}
               >
                 <img
@@ -355,49 +378,42 @@ export function RoomTypeBookingCard({
   onSelect,
   onAddToCart,
   onCartQuantityChange,
-  availabilityByDate = {},
-  checkIn,
-  checkOut,
-  calendarLoading = false,
 }: RoomTypeBookingCardProps) {
   const presentation = getRoomPresentation({ name, description, amenities });
-  const disabled = soldOut;
+  const soldOutDisabled = soldOut;
   const singleRoomDisabled = soldOut || capacityExceeded;
 
   return (
     <article
       className={`group overflow-hidden rounded-2xl border transition-all duration-300 ${
-        disabled
-          ? 'border-slate-200 bg-slate-50/50 dark:border-white/5 dark:bg-white/5 opacity-65'
+        soldOutDisabled
+          ? 'border-slate-200 bg-slate-50/50 opacity-65 dark:border-white/5 dark:bg-white/5'
           : selected
-            ? 'border-mango-accent bg-mango-accent/[0.04] dark:bg-white/10 ring-2 ring-mango-accent/45 shadow-xl shadow-mango-accent/5'
+            ? 'border-mango-accent bg-mango-accent/[0.04] ring-2 ring-mango-accent/45 shadow-xl shadow-mango-accent/5 dark:bg-white/10'
             : 'border-slate-200 bg-white hover:border-mango-accent/40 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/[0.08]'
       }`}
     >
-      <div className="grid lg:grid-cols-[minmax(0,300px)_1fr_minmax(0,240px)]">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,300px)_1fr_240px] divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-white/5">
+      <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-white/5 lg:grid-cols-[minmax(0,300px)_1fr_240px] lg:divide-x lg:divide-y-0">
         <div className="relative aspect-[4/3] lg:aspect-auto lg:min-h-[300px]">
           <RoomImageSlider
             images={presentation.imageUrls}
             name={name}
-            disabled={disabled}
+            disabled={soldOutDisabled}
           />
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-slate-950/60 via-transparent to-transparent dark:from-mango-navy-950/80" />
-          {presentation.badge && !disabled && (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent dark:from-mango-navy-950/80" />
+          {presentation.badge && !soldOutDisabled && (
             <span className="absolute left-3 top-3 rounded-full bg-mango-accent px-3 py-1 text-xs font-bold text-mango-navy-950">
               {presentation.badge}
             </span>
           )}
-          {selected && !disabled && (
-            <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-white z-20">
+          {selected && !soldOutDisabled && (
+            <span className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-white">
               <Check className="h-3.5 w-3.5" />
               Đã chọn
             </span>
           )}
-          {soldOut && (
-            <div className="absolute inset-0 flex items-center justify-center bg-mango-navy-950/70 backdrop-blur-sm">
-          {disabled && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 dark:bg-mango-navy-950/70 backdrop-blur-sm z-20">
+          {soldOutDisabled && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm dark:bg-mango-navy-950/70">
               <span className="rounded-full bg-rose-600 px-4 py-2 text-center text-sm font-bold text-white">
                 Hết phòng
               </span>
@@ -408,18 +424,20 @@ export function RoomTypeBookingCard({
         <div className="flex flex-col p-6 lg:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{name}</h3>
+              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
+                {name}
+              </h3>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-white/60">
                 <Users className="h-4 w-4 text-sky-600 dark:text-mango-accent" />
                 Tối đa {maxOccupancy} khách
-                {!disabled && (
-                  <span className="rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                {!soldOutDisabled && (
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                     Còn {available} phòng
                   </span>
                 )}
               </p>
             </div>
-            {!disabled && totalPrice != null && (
+            {!soldOutDisabled && totalPrice != null && (
               <div className="text-right">
                 <p className="text-2xl font-black text-slate-900 dark:text-mango-accent">
                   {formatVnd(totalPrice)}
@@ -453,8 +471,8 @@ export function RoomTypeBookingCard({
           </div>
 
           <div className="mt-auto flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-center">
-            {!soldOut && onCartQuantityChange && (
-              <div className="flex items-center gap-2">
+            {!soldOutDisabled && onCartQuantityChange && (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 dark:border-white/15 dark:bg-white/5">
                 <button
                   type="button"
                   aria-label="Bớt phòng trong đơn"
@@ -462,11 +480,11 @@ export function RoomTypeBookingCard({
                   onClick={() =>
                     onCartQuantityChange(Math.max(0, cartQuantity - 1))
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-800 disabled:opacity-30 dark:border-white/15 dark:bg-slate-800 dark:text-white"
                 >
                   <Minus className="h-4 w-4" />
                 </button>
-                <span className="min-w-[4rem] text-center text-sm font-bold text-white">
+                <span className="min-w-[5rem] text-center text-sm font-bold text-slate-800 dark:text-white">
                   {cartQuantity > 0 ? `${cartQuantity} trong đơn` : 'Thêm đơn'}
                 </span>
                 <button
@@ -479,7 +497,7 @@ export function RoomTypeBookingCard({
                     if (cartQuantity === 0 && onAddToCart) onAddToCart();
                     else onCartQuantityChange(cartQuantity + 1);
                   }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-mango-accent/50 bg-mango-accent/20 text-mango-accent disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-mango-accent/50 bg-mango-accent/15 text-mango-accent disabled:opacity-30 dark:bg-mango-accent/20"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -491,19 +509,13 @@ export function RoomTypeBookingCard({
               onClick={onSelect}
               className={`rounded-full py-3.5 text-sm font-bold transition-all sm:px-8 ${
                 singleRoomDisabled
-                  ? 'cursor-not-allowed bg-white/10 text-white/30'
-                  : selected
-                    ? 'bg-mango-accent text-mango-navy-950 shadow-lg shadow-mango-accent/25'
-                    : 'border border-white/25 bg-transparent text-white hover:border-mango-accent hover:text-mango-accent'
-              className={`w-full rounded-full py-3.5 text-sm font-bold transition-all sm:w-auto sm:px-10 ${
-                disabled
                   ? 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-white/10 dark:text-white/30'
                   : selected
-                    ? 'bg-mango-accent text-mango-navy-950 shadow-lg shadow-mango-accent/25 hover:bg-mango-accent-light'
-                    : 'bg-slate-900 text-white hover:bg-mango-accent hover:text-mango-navy-950 dark:bg-white dark:text-mango-navy-950 dark:hover:bg-mango-accent dark:hover:text-mango-navy-950'
+                    ? 'bg-mango-accent text-mango-navy-950 shadow-lg shadow-mango-accent/25'
+                    : 'border border-slate-300 bg-white text-slate-900 hover:border-mango-accent hover:text-mango-accent dark:border-white/25 dark:bg-transparent dark:text-white'
               }`}
             >
-              {soldOut
+              {soldOutDisabled
                 ? 'Không khả dụng'
                 : capacityExceeded
                   ? 'Chỉ đặt kèm phòng khác'
@@ -512,23 +524,7 @@ export function RoomTypeBookingCard({
           </div>
         </div>
 
-        <div className="border-t border-white/10 p-4 lg:border-l lg:border-t-0 lg:p-4">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-mango-accent">
-            Lịch trống
-          </p>
-          {calendarLoading ? (
-            <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xs text-white/50">
-              Đang tải lịch...
-            </div>
-          ) : (
-            <RoomAvailabilityCalendar
-              availabilityByDate={availabilityByDate}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              focusDate={checkIn}
-            />
-          )}
-        <div className="flex flex-col p-6 bg-slate-50/20 dark:bg-slate-900/5 justify-center">
+        <div className="flex flex-col justify-center bg-slate-50/50 p-4 dark:bg-slate-900/20 lg:p-6">
           <RoomDailyCalendar propertyId={propertyId} roomTypeId={roomTypeId} />
         </div>
       </div>

@@ -16,13 +16,8 @@ import {
   todayLocal,
 } from '../lib/booking-dates';
 import {
-  calendarDaysToMap,
-  defaultCalendarRange,
-} from '../components/booking/RoomAvailabilityCalendar';
-import {
   fetchCatalog,
   fetchAvailability,
-  fetchAvailabilityCalendar,
   fetchQuote,
   checkoutGroup,
   savePendingBooking,
@@ -65,10 +60,6 @@ export function BookPage() {
     [],
   );
   const [cartLines, setCartLines] = useState<CartLine[]>([]);
-  const [calendarByRoomType, setCalendarByRoomType] = useState<
-    Record<string, Record<string, number>>
-  >({});
-  const [calendarLoading, setCalendarLoading] = useState(false);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -77,23 +68,6 @@ export function BookPage() {
   const today = todayLocal();
   const minCheckOut = checkIn ? addDaysIso(checkIn, 1) : '';
   const totalGuests = adults + children;
-
-  const loadCalendar = useCallback(async (propertyId: string) => {
-    const { from, to } = defaultCalendarRange();
-    setCalendarLoading(true);
-    try {
-      const data = await fetchAvailabilityCalendar(propertyId, from, to);
-      const map: Record<string, Record<string, number>> = {};
-      for (const [roomTypeId, days] of Object.entries(data.calendars)) {
-        map[roomTypeId] = calendarDaysToMap(days);
-      }
-      setCalendarByRoomType(map);
-    } catch {
-      setCalendarByRoomType({});
-    } finally {
-      setCalendarLoading(false);
-    }
-  }, []);
 
   const runSearch = useCallback(async () => {
     if (!catalog || !checkIn || !checkOut) {
@@ -167,11 +141,6 @@ export function BookPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (!catalog) return;
-    void loadCalendar(catalog.id);
-  }, [catalog, loadCalendar]);
 
   useEffect(() => {
     if (!catalog || initialSearchDone.current) return;
@@ -347,16 +316,12 @@ export function BookPage() {
           />
 
           {hasSearched && !searching && (
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-slate-600 dark:text-white/60">
               {anyAvailCount > 0
                 ? totalGuests > 2 && singleRoomFitCount === 0
                   ? `${anyAvailCount} loại phòng trống — gợi ý phối phòng cho ${totalGuests} khách bên dưới, hoặc tự thêm vào đơn.`
-                  : `${anyAvailCount} loại phòng trống · ${checkIn} → ${checkOut} · ${totalGuests} khách`
-                : 'Không có phòng trống — thử đổi ngày.'}
-            <p className="text-sm text-slate-600 dark:text-white/60">
-              {matchingCount > 0
-                ? `${matchingCount} loại phòng phù hợp · ${checkIn} → ${checkOut} · ${adults} người lớn${children > 0 ? `, ${children} trẻ em` : ''}`
-                : 'Không có phòng trống phù hợp bộ lọc — thử đổi ngày hoặc giảm số khách.'}
+                  : `${anyAvailCount} loại phòng trống · ${checkIn} → ${checkOut} · ${totalGuests} khách (${adults} người lớn${children > 0 ? `, ${children} trẻ em` : ''})`
+                : 'Không có phòng trống — thử đổi ngày hoặc giảm số khách.'}
             </p>
           )}
 
@@ -389,6 +354,8 @@ export function BookPage() {
                 return (
                   <RoomTypeBookingCard
                     key={rt.id}
+                    propertyId={catalog.id}
+                    roomTypeId={rt.id}
                     name={rt.name}
                     description={rt.description}
                     amenities={rt.amenities}
@@ -402,45 +369,14 @@ export function BookPage() {
                     }
                     soldOut={soldOut}
                     capacityExceeded={capacityExceeded}
-                    selected={false}
+                    selected={cartQ > 0}
                     cartQuantity={cartQ}
                     maxCartQuantity={avail}
                     onSelect={() => handleSelectSingleRoom(rt.id)}
                     onAddToCart={() => setCartQuantity(rt.id, 1)}
                     onCartQuantityChange={(q) => setCartQuantity(rt.id, q)}
-                    availabilityByDate={calendarByRoomType[rt.id] ?? {}}
-                    checkIn={checkIn}
-                    checkOut={checkOut}
-                    calendarLoading={calendarLoading}
                   />
                 );
-              const avail = availability[rt.id] ?? 0;
-              const soldOut = !hasSearched || avail <= 0;
-              const capacityExceeded =
-                hasSearched && avail > 0 && rt.maxOccupancy < totalGuests;
-
-              return (
-                <RoomTypeBookingCard
-                  key={rt.id}
-                  propertyId={catalog.id}
-                  roomTypeId={rt.id}
-                  name={rt.name}
-                  description={rt.description}
-                  amenities={rt.amenities}
-                  maxOccupancy={rt.maxOccupancy}
-                  available={avail}
-                  totalPrice={quotes[rt.id] ?? null}
-                  nightsCount={
-                    checkIn && checkOut
-                      ? nightsBetween(checkIn, checkOut).length
-                      : 0
-                  }
-                  soldOut={soldOut}
-                  capacityExceeded={capacityExceeded}
-                  selected={selectedRoomTypeId === rt.id}
-                  onSelect={() => handleSelectRoom(rt.id)}
-                />
-              );
               })}
           </div>
 
