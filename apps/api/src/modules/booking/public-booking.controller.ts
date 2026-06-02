@@ -18,6 +18,7 @@ import {
   PublicCheckoutGroupDto,
   PublicCreateHoldDto,
   PublicQuoteQueryDto,
+  PublicDailyAvailabilityQueryDto,
 } from './dto/public-booking.dto';
 import { AvailabilityQueryDto } from './dto/booking.dto';
 
@@ -48,6 +49,10 @@ export class PublicBookingController {
       query.from,
       query.to,
     );
+  @Get('daily-availability')
+  @ApiOperation({ summary: 'Check room availability day-by-day (public)' })
+  getDailyAvailability(@Query() query: PublicDailyAvailabilityQueryDto) {
+    return this.publicBookingService.getDailyAvailability(query);
   }
 
   @Get('quote')

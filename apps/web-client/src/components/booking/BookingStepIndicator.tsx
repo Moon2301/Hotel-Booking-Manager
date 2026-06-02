@@ -22,15 +22,15 @@ export function BookingStepIndicator({ current }: { current: Step }) {
                     active
                       ? 'bg-mango-accent text-mango-navy-950 shadow-lg shadow-mango-accent/30'
                       : done
-                        ? 'bg-mango-accent/30 text-mango-accent'
-                        : 'border border-white/20 bg-white/5 text-white/40'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:bg-mango-accent/20 dark:text-mango-accent'
+                        : 'border border-slate-300 bg-slate-50 text-slate-400 dark:border-white/20 dark:bg-white/5 dark:text-white/40'
                   }`}
                 >
                   {done ? '✓' : i + 1}
                 </div>
                 <span
                   className={`hidden text-xs font-semibold sm:block ${
-                    active ? 'text-mango-accent' : 'text-white/50'
+                    active ? 'text-slate-900 font-bold dark:text-mango-accent dark:font-semibold' : 'text-slate-500 dark:text-white/50'
                   }`}
                 >
                   {s.label}
@@ -39,7 +39,7 @@ export function BookingStepIndicator({ current }: { current: Step }) {
               {i < STEPS.length - 1 && (
                 <div
                   className={`mx-2 h-0.5 flex-1 ${
-                    i < currentIndex ? 'bg-mango-accent/60' : 'bg-white/10'
+                    i < currentIndex ? 'bg-emerald-500/30 dark:bg-mango-accent/60' : 'bg-slate-200 dark:bg-white/10'
                   }`}
                 />
               )}

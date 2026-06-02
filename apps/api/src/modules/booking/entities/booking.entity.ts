@@ -11,6 +11,7 @@ import { BookingOccupant } from './booking-occupant.entity';
 import { ReferralPartner } from '../../partner/entities/referral-partner.entity';
 
 export enum BookingStatus {
+  /** @deprecated Never assigned by application code. Kept for schema compatibility only. */
   HOLD = 'HOLD',
   CONFIRMED = 'CONFIRMED',
   CHECKED_IN = 'CHECKED_IN',
@@ -86,6 +87,7 @@ export class Booking {
     nullable: true,
   })
   externalReservationId: string | null;
+  @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.CONFIRMED }) status: BookingStatus;
   
   @Column({ type: 'date', name: 'check_in' }) checkIn: string;
   @Column({ type: 'date', name: 'check_out' }) checkOut: string;

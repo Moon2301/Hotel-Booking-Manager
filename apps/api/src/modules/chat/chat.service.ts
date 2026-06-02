@@ -4,7 +4,8 @@ import { Repository } from 'typeorm';
 import { ChatThread } from './entities/chat-thread.entity';
 import { ChatMessage } from './entities/chat-message.entity';
 import { CreateThreadDto, SendMessageDto } from './dto/chat.dto';
-import { User, UserRole } from '../auth/entities/user.entity';
+import { User } from '../auth/entities/user.entity';
+import { Guest } from '../guest/entities/guest.entity';
 
 @Injectable()
 export class ChatService {
@@ -12,6 +13,7 @@ export class ChatService {
     @InjectRepository(ChatThread) private threadRepo: Repository<ChatThread>,
     @InjectRepository(ChatMessage) private messageRepo: Repository<ChatMessage>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Guest) private guestRepo: Repository<Guest>,
   ) {}
 
   async createThread(dto: CreateThreadDto, guestId: string) {
@@ -35,13 +37,21 @@ export class ChatService {
     const thread = await this.threadRepo.findOne({ where: { id: dto.threadId } });
     if (!thread) throw new NotFoundException('Thread not found');
 
-    const sender = await this.userRepo.findOne({ where: { id: senderId } });
-    if (!sender) throw new UnauthorizedException('Sender not found');
+    let senderRole = 'GUEST';
+    const user = await this.userRepo.findOne({ where: { id: senderId } });
+    if (user) {
+      senderRole = user.role;
+    } else {
+      const guest = await this.guestRepo.findOne({ where: { id: senderId } });
+      if (!guest) {
+        throw new UnauthorizedException('Sender not found');
+      }
+    }
 
     const message = this.messageRepo.create({
       threadId: dto.threadId,
       senderId,
-      senderRole: sender.role,
+      senderRole,
       content: dto.content,
     });
 

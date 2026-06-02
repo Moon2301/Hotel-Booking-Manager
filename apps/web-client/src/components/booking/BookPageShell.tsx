@@ -39,7 +39,7 @@ export function BookPageShell({ children, title, subtitle }: BookPageShellProps)
 
       <section className="relative border-b border-slate-200 bg-gradient-to-br from-slate-200 via-slate-100 to-white py-12 dark:border-white/10 dark:from-mango-navy-900 dark:via-mango-navy-950 dark:to-mango-navy-900">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-mango-accent">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-mango-accent">
             Đặt phòng trực tuyến
           </p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">

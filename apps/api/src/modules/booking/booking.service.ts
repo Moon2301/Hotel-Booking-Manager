@@ -259,11 +259,18 @@ export class BookingService {
     await queryRunner.startTransaction();
 
     try {
-      // 🔒 Pessimistic lock on property row — serializes concurrent hold requests
-      // for the same property so only one can check-count-insert at a time.
+      // 🔒 Pessimistic lock on RoomType row (not Property) — serializes concurrent
+      // hold requests for the SAME room type only, allowing other room types in the
+      // same property to proceed in parallel. Reduces bottleneck under high load.
+      const roomType = await queryRunner.manager.findOne(RoomType, {
+        where: { id: dto.roomTypeId, propertyId: dto.propertyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!roomType) throw new NotFoundException('Room type not found for this property');
+
+      // Verify property exists (no lock needed — we only need room type lock)
       const property = await queryRunner.manager.findOne(Property, {
         where: { id: dto.propertyId },
-        lock: { mode: 'pessimistic_write' },
       });
       if (!property) throw new NotFoundException('Property not found');
 
@@ -1233,8 +1240,21 @@ export class BookingService {
       this.invoiceRepo.findOne({ where: { bookingId: id, invoiceType: InvoiceType.DEPOSIT } }),
     ]);
 
+    // 🔒 Block check-out if there is any outstanding balance that hasn't been settled.
+    // Guests must settle all posted charges and room charges before leaving.
+    const depositPaid = !deposit || deposit.paymentStatus === InvoicePaymentStatus.PAID;
+    const hasPostedCharges = charges.length > 0;
+    if (!depositPaid || hasPostedCharges) {
+      const unpaidItems: string[] = [];
+      if (!depositPaid) unpaidItems.push('room deposit invoice is unpaid');
+      if (hasPostedCharges) unpaidItems.push(`${charges.length} posted service charge(s) unsettled`);
+      throw new BadRequestException(
+        `Cannot check out: outstanding balance must be settled first (${unpaidItems.join('; ')}).`,
+      );
+    }
+
     const roomTotal = Number(booking.totalAmount || 0);
-    const chargesTotal = charges.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const chargesTotal = 0; // All posted charges were already verified as settled above
     const grandTotal = roomTotal + chargesTotal;
 
     const finalInvoice = await this.invoiceRepo.save(
@@ -1591,7 +1611,12 @@ export class BookingService {
     };
   }
 
-  async selfCheckIn(dto: { token?: string; pin?: string; bookingId?: string }) {
+  /**
+   * Validates a QR token or 6-digit PIN issued for digital check-in.
+   * This method ONLY validates credentials — it does NOT complete the check-in.
+   * After scanning, the front-desk staff uses checkIn() with the guest's ID document.
+   */
+  async validateCheckinCredentials(dto: { token?: string; pin?: string; bookingId?: string }) {
     let booking: Booking | null = null;
 
     if (dto.token) {
@@ -1610,11 +1635,13 @@ export class BookingService {
 
       booking = await this.bookingRepo.findOne({
         where: { id: payload.bookingId, checkinToken: dto.token },
+        relations: ['guest', 'roomType'],
       });
     } else if (dto.pin && dto.bookingId) {
       // ── Validate 6-digit PIN ──────────────────────────────────────────────
       booking = await this.bookingRepo.findOne({
         where: { id: dto.bookingId },
+        relations: ['guest', 'roomType'],
       });
       if (!booking) throw new NotFoundException('Booking not found');
       if (!booking.checkinPin) {
@@ -1635,9 +1662,17 @@ export class BookingService {
       throw new BadRequestException('Check-in credentials have expired');
     }
 
-    throw new BadRequestException(
-      'Vui lòng check-in tại quầy lễ tân với CCCD/Hộ chiếu để đăng ký tạm trú tạm vắng.',
-    );
+    // Credentials are valid — return booking info so front desk can proceed with checkIn()
+    return {
+      valid: true,
+      bookingId: booking.id,
+      guestName: (booking as any).guest?.fullName ?? null,
+      roomTypeName: (booking as any).roomType?.name ?? null,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      status: booking.status,
+      message: 'Credentials valid. Please present ID document to front desk to complete check-in.',
+    };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

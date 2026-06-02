@@ -4,7 +4,7 @@ import {
 } from 'typeorm';
 import { Property } from '../../property/entities/property.entity';
 import { Booking } from '../../booking/entities/booking.entity';
-import { User } from '../../auth/entities/user.entity';
+import { Guest } from '../../guest/entities/guest.entity';
 
 export enum ChatThreadStatus {
   OPEN = 'OPEN',
@@ -27,9 +27,9 @@ export class ChatThread {
   booking: Booking;
 
   @Column({ name: 'guest_id' }) guestId: string;
-  @ManyToOne(() => User)
+  @ManyToOne(() => Guest)
   @JoinColumn({ name: 'guest_id' })
-  guest: User;
+  guest: Guest;
 
   @Column({ type: 'enum', enum: ChatThreadStatus, default: ChatThreadStatus.OPEN }) status: ChatThreadStatus;
 
