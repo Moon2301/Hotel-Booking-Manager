@@ -24,11 +24,11 @@ import {
   PublicCheckoutDto,
   PublicCheckoutGroupDto,
   PublicQuoteQueryDto,
+  PublicDailyAvailabilityQueryDto,
 } from './dto/public-booking.dto';
 import { ConfigService } from '@nestjs/config';
 import { buildBookingQrPayload } from './booking-token.util';
 import { PartnerCommissionService } from '../partner/partner-commission.service';
-import { PublicCheckoutDto, PublicQuoteQueryDto, PublicDailyAvailabilityQueryDto } from './dto/public-booking.dto';
 
 @Injectable()
 export class PublicBookingService {
@@ -88,6 +88,8 @@ export class PublicBookingService {
 
   getAvailabilityCalendar(propertyId: string, from: string, to: string) {
     return this.bookingService.getAvailabilityCalendar(propertyId, from, to);
+  }
+
   getDailyAvailability(query: PublicDailyAvailabilityQueryDto) {
     return this.bookingService.getDailyAvailability(
       query.propertyId,

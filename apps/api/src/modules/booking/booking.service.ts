@@ -233,6 +233,29 @@ export class BookingService {
     );
   }
 
+  async getDailyAvailability(
+    propertyId: string,
+    roomTypeId: string,
+    from: string,
+    to: string,
+  ) {
+    const calendar = await this.inventoryService.computeDailyAvailabilityCalendar(
+      propertyId,
+      from,
+      to,
+      this.dataSource.manager,
+    );
+    const days = calendar.calendars[roomTypeId] ?? [];
+    const total = await this.roomRepo.count({
+      where: { propertyId, roomTypeId },
+    });
+    return days.map((d) => ({
+      date: d.date,
+      available: d.available,
+      total,
+    }));
+  }
+
   /**
    * Core availability calculation — can run inside an existing EntityManager
    * (transaction) or against the default manager.

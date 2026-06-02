@@ -68,7 +68,12 @@ export class Booking {
   @OneToMany(() => BookingOccupant, (o) => o.booking)
   occupants: BookingOccupant[];
 
-  @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.HOLD }) status: BookingStatus;
+  @Column({
+    type: 'enum',
+    enum: BookingStatus,
+    default: BookingStatus.CONFIRMED,
+  })
+  status: BookingStatus;
 
   @Column({
     type: 'enum',
@@ -87,8 +92,7 @@ export class Booking {
     nullable: true,
   })
   externalReservationId: string | null;
-  @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.CONFIRMED }) status: BookingStatus;
-  
+
   @Column({ type: 'date', name: 'check_in' }) checkIn: string;
   @Column({ type: 'date', name: 'check_out' }) checkOut: string;
   

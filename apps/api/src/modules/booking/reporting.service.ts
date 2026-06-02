@@ -140,13 +140,10 @@ export class ReportingService {
 
       data.push({
         date: dateStr,
-        adr: metrics.metrics.adr,
-        occupancy: metrics.metrics.occupancyRate,
-        revenue: metrics.metrics.totalRevenue,
-        roomsBooked: metrics.metrics.occupiedRoomNights,
         adr: Math.round(adr),
         occupancy: Math.round(occupancyRate * 100) / 100,
         revenue: Math.round(totalRevenue),
+        roomsBooked: occupiedRoomNights,
       });
     }
 
