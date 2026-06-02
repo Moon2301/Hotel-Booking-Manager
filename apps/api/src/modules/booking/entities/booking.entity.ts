@@ -25,6 +25,10 @@ export { PaymentStatus };
 @Entity('bookings')
 export class Booking {
   @PrimaryGeneratedColumn('uuid') id: string;
+
+  /** Mã đặt phòng hiển thị cho khách (6 ký tự, duy nhất) */
+  @Column({ name: 'booking_code', type: 'char', length: 6, nullable: true, unique: true })
+  bookingCode: string | null;
   
   @Column({ name: 'property_id' }) propertyId: string;
   @ManyToOne(() => Property)

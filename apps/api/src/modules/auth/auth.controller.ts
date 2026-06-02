@@ -11,6 +11,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -62,6 +63,19 @@ export class AuthController {
   @ApiOperation({ summary: 'Guest login using booking ID + phone number' })
   async guestLogin(@Body() body: { bookingId: string; phone: string }) {
     return this.authService.guestLogin(body.bookingId, body.phone);
+  }
+
+  @Get('auth/guest-session')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Refresh guest + booking data (incl. check-in QR)' })
+  async guestSession(
+    @Req() req: Request & { user: { type?: string; bookingId?: string; guestId?: string } },
+  ) {
+    if (req.user.type !== 'guest' || !req.user.bookingId || !req.user.guestId) {
+      throw new UnauthorizedException('Guest session required');
+    }
+    return this.authService.getGuestSession(req.user.bookingId, req.user.guestId);
   }
 
   // ─── Current User ──────────────────────────────────────────────────────────

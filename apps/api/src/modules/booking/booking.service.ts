@@ -20,7 +20,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import * as QRCode from 'qrcode';
+import { User } from '../auth/entities/user.entity';
+import { createBookingQrDataUrl } from './booking-qr.util';
+import {
+  generateBookingCode,
+  isBookingCodeFormat,
+  isUuidFormat,
+  normalizeBookingCodeInput,
+} from './booking-code.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   Booking,
@@ -84,6 +91,8 @@ export class BookingService {
     private chargeRepo: Repository<BookingCharge>,
     @InjectRepository(Invoice)
     private invoiceRepo: Repository<Invoice>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
     private dataSource: DataSource,
     private notificationService: NotificationService,
     private jwtService: JwtService,
@@ -91,6 +100,44 @@ export class BookingService {
     private mailService: MailService,
     private guestService: GuestService,
   ) {}
+
+  /** Gán mã 6 ký tự duy nhất (idempotent). */
+  async ensureBookingCode(
+    bookingId: string,
+    manager?: EntityManager,
+  ): Promise<string> {
+    const repo = manager ? manager.getRepository(Booking) : this.bookingRepo;
+    const booking = await repo.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.bookingCode) return booking.bookingCode;
+
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const code = generateBookingCode();
+      const clash = await repo.exist({ where: { bookingCode: code } });
+      if (!clash) {
+        await repo.update(bookingId, { bookingCode: code });
+        return code;
+      }
+    }
+    throw new ConflictException('Could not allocate booking code');
+  }
+
+  /** My Stay: UUID (cũ) hoặc mã 6 ký tự. */
+  async resolveBookingIdForGuest(input: string): Promise<string> {
+    const trimmed = input.trim();
+    if (isUuidFormat(trimmed)) return trimmed;
+    const code = normalizeBookingCodeInput(trimmed);
+    if (isBookingCodeFormat(code)) {
+      const booking = await this.bookingRepo.findOne({
+        where: { bookingCode: code },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+      return booking.id;
+    }
+    throw new BadRequestException(
+      'Mã đặt phòng không hợp lệ (6 ký tự chữ/số)',
+    );
+  }
 
   /**
    * After payment: assign a physical room and mark RESERVED (chờ check-in tại quầy).
@@ -410,6 +457,8 @@ export class BookingService {
       savedBooking.totalAmount = totalAmount;
       await queryRunner.manager.save(savedBooking);
 
+      await this.ensureBookingCode(savedBooking.id, queryRunner.manager);
+
       await queryRunner.manager.save(
         AuditLog,
         queryRunner.manager.create(AuditLog, {
@@ -654,11 +703,13 @@ export class BookingService {
     return crypto.createHash('sha256').update(value).digest('hex');
   }
 
-  private normalizeCheckInOccupants(dto: CheckInDto): CheckInOccupantDto[] {
+  private normalizeCheckInOccupants(
+    dto: CheckInDto,
+  ): Array<CheckInOccupantDto & { fullName: string }> {
     if (dto.occupants?.length) {
       return dto.occupants.map((o) => ({
         ...o,
-        fullName: o.fullName.trim(),
+        fullName: (o.fullName ?? '').trim(),
         idDocumentNumber: o.idDocumentNumber.replace(/\s+/g, '').trim(),
       }));
     }
@@ -1171,6 +1222,40 @@ export class BookingService {
 
   // ─── Digital Check-in (QR / PIN) ──────────────────────────────────────────
 
+  /** Tự tạo mã QR check-in sau thanh toán (idempotent). */
+  async ensureCheckinTokenForPaidBooking(bookingId: string): Promise<void> {
+    const booking = await this.bookingRepo.findOne({ where: { id: bookingId } });
+    if (!booking) return;
+    await this.ensureBookingCode(bookingId);
+    if (booking.status !== BookingStatus.CONFIRMED) return;
+    if (booking.paymentStatus !== PaymentStatus.PAID) return;
+
+    const tokenStillValid =
+      !!booking.checkinToken &&
+      !!booking.checkinTokenExpiresAt &&
+      booking.checkinTokenExpiresAt > new Date();
+    if (tokenStillValid) return;
+
+    const systemUser = await this.userRepo.findOne({
+      where: { email: 'admin@hotel.com' },
+    });
+    const actorId = systemUser?.id;
+    if (!actorId) {
+      this.logger.warn(
+        'ensureCheckinTokenForPaidBooking: admin@hotel.com not found — skip auto QR',
+      );
+      return;
+    }
+
+    try {
+      await this.generateCheckinToken(bookingId, actorId);
+    } catch (err) {
+      this.logger.error(
+        `ensureCheckinTokenForPaidBooking failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
   async generateCheckinToken(bookingId: string, actorId: string) {
     const booking = await this.bookingRepo.findOne({
       where: { id: bookingId },
@@ -1214,10 +1299,12 @@ export class BookingService {
       }),
     );
 
-    // Generate QR data URL (base64 PNG) — non-blocking
+    const bookingCode = await this.ensureBookingCode(bookingId);
+
+    // QR tra cứu tại quầy — mã 6 ký tự (không nhét JWT dài vào email)
     let qrDataUrl = '';
     try {
-      qrDataUrl = await QRCode.toDataURL(token, { width: 250, margin: 2 });
+      qrDataUrl = await createBookingQrDataUrl(bookingCode);
     } catch (qrErr) {
       this.logger.error(`QR generation error: ${qrErr.message}`);
     }
@@ -1231,7 +1318,7 @@ export class BookingService {
         .sendCheckinCredentials({
           to: guestEmail,
           guestName,
-          bookingId: booking.id,
+          bookingCode,
           pin,
           qrDataUrl,
           expiresAt,

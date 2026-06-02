@@ -6,6 +6,8 @@ type PropertySelectionContextValue = {
   selectedPropertyId: string;
   setSelectedPropertyId: (id: string) => void;
   clearSelectedPropertyId: () => void;
+  /** false until localStorage has been read on the client */
+  hydrated: boolean;
 };
 
 const PropertySelectionContext = createContext<PropertySelectionContextValue | null>(
@@ -20,6 +22,7 @@ export function PropertySelectionProvider({
   children: React.ReactNode;
 }) {
   const [selectedPropertyId, setSelectedPropertyIdState] = useState<string>('');
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
@@ -28,6 +31,7 @@ export function PropertySelectionProvider({
     } catch {
       // ignore
     }
+    setHydrated(true);
   }, []);
 
   const setSelectedPropertyId = (id: string) => {
@@ -49,8 +53,13 @@ export function PropertySelectionProvider({
   };
 
   const value = useMemo(
-    () => ({ selectedPropertyId, setSelectedPropertyId, clearSelectedPropertyId }),
-    [selectedPropertyId],
+    () => ({
+      selectedPropertyId,
+      setSelectedPropertyId,
+      clearSelectedPropertyId,
+      hydrated,
+    }),
+    [selectedPropertyId, hydrated],
   );
 
   return (
@@ -69,6 +78,7 @@ export function usePropertySelection() {
       selectedPropertyId: '',
       setSelectedPropertyId: () => undefined,
       clearSelectedPropertyId: () => undefined,
+      hydrated: false,
     };
   }
   return ctx;

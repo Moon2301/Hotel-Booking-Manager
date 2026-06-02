@@ -52,11 +52,14 @@ export interface CheckoutResult {
 export interface ConfirmationResult {
   booking: {
     id: string;
+    bookingCode: string;
     checkIn: string;
     checkOut: string;
     status: string;
     paymentStatus: string;
     totalAmount: number;
+    checkinToken?: string | null;
+    checkinTokenExpiresAt?: string | null;
   };
   guest: { fullName: string; email: string; phone: string };
   roomType: { id: string; name: string } | null;
@@ -67,6 +70,8 @@ export interface ConfirmationResult {
     paymentStatus: string;
     paidAt: string | null;
   } | null;
+  qrPayload?: string | null;
+  bookingCode?: string | null;
 }
 
 const API = '/api/v1/public';

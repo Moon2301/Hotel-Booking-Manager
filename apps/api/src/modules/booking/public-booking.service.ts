@@ -21,6 +21,8 @@ import {
   AvailabilityQueryDto,
 } from './dto/booking.dto';
 import { PublicCheckoutDto, PublicQuoteQueryDto } from './dto/public-booking.dto';
+import { ConfigService } from '@nestjs/config';
+import { buildBookingQrPayload } from './booking-token.util';
 
 @Injectable()
 export class PublicBookingService {
@@ -39,6 +41,7 @@ export class PublicBookingService {
     private readonly bookingRepo: Repository<Booking>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly config: ConfigService,
   ) {}
 
   async getCatalog() {
@@ -198,28 +201,54 @@ export class PublicBookingService {
 
     const invoice = await this.invoiceService.getInvoiceByBooking(bookingId);
 
+    const isPaid =
+      booking.paymentStatus === 'PAID' ||
+      invoice?.paymentStatus === 'PAID';
+
+    if (isPaid) {
+      await this.bookingService.ensureCheckinTokenForPaidBooking(bookingId);
+    }
+
+    const latest = await this.bookingRepo.findOne({
+      where: { id: bookingId },
+      relations: ['guest', 'roomType', 'property'],
+    });
+    const active = latest ?? booking;
+
+    const bookingCode = await this.bookingService.ensureBookingCode(active.id);
+
+    let qrPayload: string | null = null;
+    if (isPaid) {
+      qrPayload = buildBookingQrPayload(bookingCode);
+    }
+
     return {
       booking: {
-        id: booking.id,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        status: booking.status,
-        paymentStatus: booking.paymentStatus,
-        totalAmount: Number(booking.totalAmount),
+        id: active.id,
+        bookingCode,
+        checkIn: active.checkIn,
+        checkOut: active.checkOut,
+        status: active.status,
+        paymentStatus: active.paymentStatus,
+        totalAmount: Number(active.totalAmount),
+        checkinToken: active.checkinToken ?? null,
+        checkinTokenExpiresAt: active.checkinTokenExpiresAt ?? null,
       },
+      qrPayload,
+      bookingCode,
       guest: {
-        fullName: booking.guest.fullName,
-        email: booking.guest.email,
-        phone: booking.guest.phone,
+        fullName: active.guest.fullName,
+        email: active.guest.email,
+        phone: active.guest.phone,
       },
-      roomType: booking.roomType
-        ? { id: booking.roomType.id, name: booking.roomType.name }
+      roomType: active.roomType
+        ? { id: active.roomType.id, name: active.roomType.name }
         : null,
-      property: booking.property
+      property: active.property
         ? {
-            id: booking.property.id,
-            name: booking.property.name,
-            address: booking.property.address,
+            id: active.property.id,
+            name: active.property.name,
+            address: active.property.address,
           }
         : null,
       invoice: invoice

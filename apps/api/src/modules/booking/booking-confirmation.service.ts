@@ -1,15 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as QRCode from 'qrcode';
 import { Booking } from './entities/booking.entity';
 import { Invoice } from './entities/invoice.entity';
 import { MailService } from './mail.service';
-import {
-  buildBookingQrPayload,
-  hashBookingVerificationCode,
-} from './booking-token.util';
+import { BookingService } from './booking.service';
+import { createBookingQrDataUrl } from './booking-qr.util';
 
 @Injectable()
 export class BookingConfirmationService {
@@ -21,6 +18,8 @@ export class BookingConfirmationService {
     @InjectRepository(Invoice)
     private readonly invoiceRepo: Repository<Invoice>,
     private readonly mailService: MailService,
+    @Inject(forwardRef(() => BookingService))
+    private readonly bookingService: BookingService,
     private readonly config: ConfigService,
   ) {}
 
@@ -45,25 +44,33 @@ export class BookingConfirmationService {
       where: { id: invoice.bookingId },
       relations: ['guest', 'roomType', 'property'],
     });
-    if (!booking?.guest?.email) {
+    if (!booking) {
+      this.logger.warn(`Booking ${invoice.bookingId} not found for confirmation email`);
+      return;
+    }
+
+    await this.bookingService.ensureCheckinTokenForPaidBooking(booking.id);
+
+    if (!booking.guest?.email) {
       this.logger.warn(
         `No guest email for booking ${invoice.bookingId}`,
       );
       return;
     }
 
-    const verificationCode = hashBookingVerificationCode(
-      booking.id,
-      secret,
+    const refreshed = await this.bookingRepo.findOne({
+      where: { id: booking.id },
+      relations: ['guest', 'roomType', 'property'],
+    });
+    if (!refreshed) return;
+
+    const bookingCode = await this.bookingService.ensureBookingCode(
+      refreshed.id,
     );
-    const qrPayload = buildBookingQrPayload(booking.id, secret);
 
     let qrDataUrl = '';
     try {
-      qrDataUrl = await QRCode.toDataURL(qrPayload, {
-        width: 260,
-        margin: 2,
-      });
+      qrDataUrl = await createBookingQrDataUrl(bookingCode);
     } catch (err) {
       this.logger.error(`QR generation failed: ${(err as Error).message}`);
     }
@@ -73,15 +80,15 @@ export class BookingConfirmationService {
       .replace(/\/$/, '');
 
     await this.mailService.sendBookingConfirmation({
-      to: booking.guest.email,
-      guestName: booking.guest.fullName,
-      bookingId: booking.id,
-      phone: booking.guest.phone,
-      verificationCode,
-      checkIn: String(booking.checkIn),
-      checkOut: String(booking.checkOut),
-      roomTypeName: booking.roomType?.name ?? '—',
-      propertyName: booking.property?.name ?? 'Mango Hotel & Resort',
+      to: refreshed.guest.email,
+      guestName: refreshed.guest.fullName,
+      bookingId: refreshed.id,
+      bookingCode,
+      phone: refreshed.guest.phone,
+      checkIn: String(refreshed.checkIn),
+      checkOut: String(refreshed.checkOut),
+      roomTypeName: refreshed.roomType?.name ?? '—',
+      propertyName: refreshed.property?.name ?? 'Mango Hotel & Resort',
       totalAmount: Number(invoice.totalAmount),
       myStayUrl: `${clientUrl}/my-stay`,
       qrDataUrl,

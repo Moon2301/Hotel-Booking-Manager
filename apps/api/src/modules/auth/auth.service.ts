@@ -4,7 +4,10 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
+import { BookingService } from '../booking/booking.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -16,6 +19,8 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { AuditLog } from './entities/audit-log.entity';
 import { Guest } from '../guest/entities/guest.entity';
 import { Booking } from '../booking/entities/booking.entity';
+import { buildBookingQrPayload } from '../booking/booking-token.util';
+import { PaymentStatus } from '../booking/entities/booking.entity';
 import {
   LoginDto,
   CreateUserDto,
@@ -34,6 +39,8 @@ export class AuthService {
     @InjectRepository(Booking) private bookingRepo: Repository<Booking>,
     private jwtService: JwtService,
     private config: ConfigService,
+    @Inject(forwardRef(() => BookingService))
+    private readonly bookingService: BookingService,
   ) {}
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -303,10 +310,44 @@ export class AuthService {
 
   // ─── Guest Auth ──────────────────────────────────────────────────────────
 
-  async guestLogin(bookingId: string, phone: string) {
+  async guestLogin(bookingRef: string, phone: string) {
+    const bookingId = await this.bookingService.resolveBookingIdForGuest(
+      bookingRef,
+    );
+    await this.bookingService.ensureCheckinTokenForPaidBooking(bookingId);
+    const session = await this.buildGuestSession(bookingId, phone.trim());
+    const payload = {
+      sub: session.guest.id,
+      type: 'guest' as const,
+      bookingId: session.booking.id,
+      guestId: session.guest.id,
+      phone: session.guest.phone,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.config.get<string>('jwt.accessSecret'),
+      expiresIn: '7d',
+    });
+
+    return { accessToken, ...session };
+  }
+
+  async getGuestSession(bookingId: string, guestId: string) {
+    const booking = await this.bookingRepo.findOne({
+      where: { id: bookingId, guestId },
+      relations: ['guest'],
+    });
+    if (!booking?.guest) {
+      throw new UnauthorizedException('Guest session invalid');
+    }
+    await this.bookingService.ensureCheckinTokenForPaidBooking(bookingId);
+    return this.buildGuestSession(booking.id, booking.guest.phone);
+  }
+
+  private async buildGuestSession(bookingId: string, phone: string) {
     const booking = await this.bookingRepo.findOne({
       where: { id: bookingId },
-      relations: ['guest'],
+      relations: ['guest', 'room'],
     });
 
     if (!booking || !booking.guest) {
@@ -317,21 +358,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid booking ID or phone number');
     }
 
-    const payload = {
-      sub: booking.guest.id,
-      type: 'guest',
-      bookingId: booking.id,
-      guestId: booking.guest.id,
-      phone: booking.guest.phone,
-    };
-
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.config.get<string>('jwt.accessSecret'),
-      expiresIn: '7d', // Longer expiry for guest portal
-    });
+    const bookingCode = await this.bookingService.ensureBookingCode(bookingId);
+    let qrPayload: string | null = null;
+    if (booking.paymentStatus === PaymentStatus.PAID) {
+      qrPayload = buildBookingQrPayload(bookingCode);
+    }
 
     return {
-      accessToken,
       guest: {
         id: booking.guest.id,
         fullName: booking.guest.fullName,
@@ -340,13 +373,20 @@ export class AuthService {
       },
       booking: {
         id: booking.id,
+        bookingCode,
         propertyId: booking.propertyId,
         roomTypeId: booking.roomTypeId,
         roomId: booking.roomId,
+        roomNumber: booking.room?.roomNumber ?? null,
         checkIn: booking.checkIn,
         checkOut: booking.checkOut,
         status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        totalAmount: booking.totalAmount != null ? Number(booking.totalAmount) : null,
+        checkinToken: booking.checkinToken ?? null,
+        checkinTokenExpiresAt: booking.checkinTokenExpiresAt ?? null,
       },
+      qrPayload,
     };
   }
 

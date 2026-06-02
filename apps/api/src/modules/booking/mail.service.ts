@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { qrDataUrlToMailAttachment } from './booking-qr.util';
 
 @Injectable()
 export class MailService {
@@ -22,7 +23,7 @@ export class MailService {
   async sendCheckinCredentials(opts: {
     to: string;
     guestName: string;
-    bookingId: string;
+    bookingCode: string;
     pin: string;
     qrDataUrl: string;
     expiresAt: Date;
@@ -71,17 +72,15 @@ export class MailService {
       <p class="pin-value">${opts.pin}</p>
     </div>
 
-    <div class="qr-section">
+    ${
+      opts.qrDataUrl
+        ? `<div class="qr-section">
       <p>📱 Hoặc quét mã QR bên dưới</p>
-      <img src="${opts.qrDataUrl}" alt="QR Check-in" width="200" height="200" />
-    </div>
-
-    <div>
-      <div class="info-row">
-        <span class="info-label">Mã đặt phòng</span>
-        <span class="info-value" style="font-family:monospace;font-size:12px">${opts.bookingId}</span>
-      </div>
-    </div>
+      <img src="cid:checkin-qr" alt="QR Check-in" width="200" height="200" />
+      <p style="margin-top:12px;font-family:monospace;font-size:18px;font-weight:800;letter-spacing:0.15em;color:#0f172a">Mã đặt phòng: ${opts.bookingCode}</p>
+    </div>`
+        : ''
+    }
 
     <div class="expires">
       ⏰ Mã này có hiệu lực đến: <strong>${expiresStr}</strong>
@@ -94,12 +93,17 @@ export class MailService {
 </body>
 </html>`;
 
+    const attachments: nodemailer.SendMailOptions['attachments'] = [];
+    const qrAttach = qrDataUrlToMailAttachment(opts.qrDataUrl, 'checkin-qr');
+    if (qrAttach) attachments.push(qrAttach);
+
     try {
       await this.transporter.sendMail({
         from: `"Mango Hotel" <${this.config.get<string>('mail.user', 'no-reply@mangohotel.vn')}>`,
         to: opts.to,
         subject: `[Mango Hotel] Mã Check-in nhanh của bạn — PIN: ${opts.pin}`,
         html,
+        attachments,
       });
       this.logger.log(`Check-in credentials email sent to ${opts.to}`);
     } catch (err) {
@@ -112,8 +116,8 @@ export class MailService {
     to: string;
     guestName: string;
     bookingId: string;
+    bookingCode: string;
     phone: string;
-    verificationCode: string;
     checkIn: string;
     checkOut: string;
     roomTypeName: string;
@@ -159,10 +163,10 @@ export class MailService {
   </div>
   <div class="body">
     <p class="greeting">Xin chào ${opts.guestName},</p>
-    <p>Cảm ơn bạn đã thanh toán. Dưới đây là thông tin tài khoản My Stay và mã QR đặt phòng (mã hóa SHA-256).</p>
+    <p>Cảm ơn bạn đã thanh toán. Dưới đây là mã đặt phòng 6 ký tự và QR để vào My Stay.</p>
 
     <div class="box">
-      <div class="row"><span class="label">Mã đặt phòng</span><span class="value" style="font-family:monospace;font-size:12px">${opts.bookingId}</span></div>
+      <div class="row"><span class="label">Mã đặt phòng</span><span class="value" style="font-family:monospace;font-size:20px;letter-spacing:0.15em">${opts.bookingCode}</span></div>
       <div class="row"><span class="label">Số điện thoại (My Stay)</span><span class="value">${opts.phone}</span></div>
       <div class="row"><span class="label">Nhận phòng</span><span class="value">${opts.checkIn}</span></div>
       <div class="row"><span class="label">Trả phòng</span><span class="value">${opts.checkOut}</span></div>
@@ -170,12 +174,9 @@ export class MailService {
       <div class="row"><span class="label">Đã thanh toán</span><span class="value">${amountStr}</span></div>
     </div>
 
-    <p><strong>Mã xác thực (SHA-256):</strong></p>
-    <div class="code">${opts.verificationCode}</div>
-
     ${
       opts.qrDataUrl
-        ? `<div class="qr"><p>Quét mã QR tại quầy hoặc lưu để tra cứu:</p><img src="${opts.qrDataUrl}" alt="QR đặt phòng" width="220" height="220" /></div>`
+        ? `<div class="qr"><p>Quét mã QR tại quầy hoặc lưu để tra cứu:</p><img src="cid:booking-qr" alt="QR đặt phòng" width="220" height="220" /><p style="margin-top:12px;font-family:monospace;font-size:18px;font-weight:800;letter-spacing:0.15em;color:#0f172a">Mã đặt phòng: ${opts.bookingCode}</p></div>`
         : ''
     }
 
@@ -187,12 +188,17 @@ export class MailService {
 </body>
 </html>`;
 
+    const attachments: nodemailer.SendMailOptions['attachments'] = [];
+    const qrAttach = qrDataUrlToMailAttachment(opts.qrDataUrl, 'booking-qr');
+    if (qrAttach) attachments.push(qrAttach);
+
     try {
       await this.transporter.sendMail({
         from: `"Mango Hotel" <${this.config.get<string>('mail.user', 'no-reply@mangohotel.vn')}>`,
         to: opts.to,
-        subject: `[Mango Hotel] Xác nhận đặt phòng — Mã ${opts.bookingId.slice(0, 8).toUpperCase()}`,
+        subject: `[Mango Hotel] Xác nhận đặt phòng — Mã ${opts.bookingCode}`,
         html,
+        attachments,
       });
       this.logger.log(`Booking confirmation email sent to ${opts.to}`);
     } catch (err) {

@@ -132,10 +132,10 @@ export function GuestPortalEntry({
               Đã đặt phòng rồi
             </p>
             <h2 className="mt-2 text-xl font-extrabold text-slate-950 dark:text-white">
-              Vào My Stay bằng mã booking
+              Vào My Stay bằng mã 6 ký tự
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
-              Nhập Mã đặt phòng + SĐT (như lúc đặt phòng), không dùng email/mật khẩu.
+              Nhập mã đặt phòng (6 ký tự) + SĐT như lúc thanh toán, không dùng email/mật khẩu.
             </p>
 
             {authError && (
@@ -148,15 +148,21 @@ export function GuestPortalEntry({
             <form className="mt-6 space-y-4" onSubmit={onSubmit}>
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase text-slate-600 dark:text-mango-accent">
-                  Mã đặt phòng (Booking ID)
+                  Mã đặt phòng (6 ký tự)
                 </label>
                 <input
                   type="text"
                   required
-                  className="field-input font-mono"
-                  placeholder="UUID sau khi đặt phòng..."
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="field-input font-mono uppercase tracking-widest"
+                  placeholder="VD: A3K9XM"
                   value={bookingIdInput}
-                  onChange={(e) => onBookingIdChange(e.target.value)}
+                  onChange={(e) =>
+                    onBookingIdChange(
+                      e.target.value.replace(/\s+/g, '').toUpperCase(),
+                    )
+                  }
                 />
               </div>
               <div>

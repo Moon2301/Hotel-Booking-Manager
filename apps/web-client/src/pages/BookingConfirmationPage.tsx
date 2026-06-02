@@ -14,6 +14,7 @@ import {
   loadPendingBooking,
   type ConfirmationResult,
 } from '../lib/booking-api';
+import { BookingQrCard } from '../components/booking/BookingQrCard';
 
 function formatVnd(n: number) {
   return new Intl.NumberFormat('vi-VN', {
@@ -58,9 +59,12 @@ export function BookingConfirmationPage() {
       .finally(() => setLoading(false));
   }, [bookingIdParam, payment]);
 
-  const copyBookingId = () => {
-    if (!data) return;
-    navigator.clipboard.writeText(data.booking.id);
+  const displayCode =
+    data?.booking.bookingCode ?? data?.bookingCode ?? '';
+
+  const copyBookingCode = () => {
+    if (!displayCode) return;
+    navigator.clipboard.writeText(displayCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -132,22 +136,22 @@ export function BookingConfirmationPage() {
               </h1>
               <p className="mt-2 text-sm text-white/90">
                 {isPaid
-                  ? 'Lưu lại Mã đặt phòng và số điện thoại bên dưới để truy cập My Stay.'
+                  ? 'Lưu lại mã 6 ký tự và số điện thoại bên dưới để truy cập My Stay.'
                   : 'Bạn có thể thanh toán lại từ cổng My Stay.'}
               </p>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-wider text-mango-accent">
-                Mã đặt phòng (Booking ID)
+                Mã đặt phòng
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-3">
-                <code className="break-all text-lg font-black text-mango-navy-950">
-                  {data.booking.id}
+                <code className="text-3xl font-black tracking-[0.2em] text-mango-navy-950">
+                  {displayCode}
                 </code>
                 <button
                   type="button"
-                  onClick={copyBookingId}
+                  onClick={copyBookingCode}
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -205,6 +209,16 @@ export function BookingConfirmationPage() {
                 </div>
               </div>
             </div>
+
+            {isPaid && displayCode && (
+              <div className="space-y-4">
+                <BookingQrCard
+                  value={displayCode}
+                  title="QR đặt phòng"
+                  hint="Quét mã QR tại quầy hoặc lưu ảnh để tra cứu."
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Link

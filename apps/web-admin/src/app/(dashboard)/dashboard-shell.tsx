@@ -15,6 +15,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { hasPermission } from '@/lib/rbac';
+import { HydrationGuard } from '@/components/hydration-guard';
 
 interface DashboardShellProps {
   children: React.ReactNode;
@@ -82,7 +83,7 @@ export function DashboardShell({ children, initialUser }: DashboardShellProps) {
           <div className="flex flex-1 flex-col overflow-hidden">
             <Header onMobileMenuToggle={() => setMobileMenuOpen(true)} />
             <main className="flex-1 overflow-y-auto bg-muted/20 p-4 sm:p-6">
-              {children}
+              <HydrationGuard>{children}</HydrationGuard>
             </main>
           </div>
         </div>

@@ -28,13 +28,20 @@ import {
 } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { useEffect, useState } from 'react';
 
 export default function ReportsPage() {
   const { selectedPropertyId, setSelectedPropertyId } = usePropertySelection();
-  
-  // Last 7 days default range
-  const endDate = format(new Date(), 'yyyy-MM-dd');
-  const startDate = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  useEffect(() => {
+    const end = format(new Date(), 'yyyy-MM-dd');
+    const start = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+    setEndDate(end);
+    setStartDate(start);
+  }, []);
 
   const { data: properties } = useQuery({
     queryKey: ['properties'],
@@ -44,13 +51,13 @@ export default function ReportsPage() {
   const { data: performance } = useQuery({
     queryKey: ['reports', 'performance', selectedPropertyId, startDate, endDate],
     queryFn: () => get<any>(`/reports/performance?propertyId=${selectedPropertyId}&startDate=${startDate}&endDate=${endDate}`),
-    enabled: !!selectedPropertyId,
+    enabled: !!selectedPropertyId && !!startDate && !!endDate,
   });
 
   const { data: chartData } = useQuery({
     queryKey: ['reports', 'chart', selectedPropertyId, startDate, endDate],
     queryFn: () => get<any[]>(`/reports/daily-chart?propertyId=${selectedPropertyId}&startDate=${startDate}&endDate=${endDate}`),
-    enabled: !!selectedPropertyId,
+    enabled: !!selectedPropertyId && !!startDate && !!endDate,
   });
 
   const { data: tickets } = useQuery({

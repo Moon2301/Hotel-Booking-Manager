@@ -56,7 +56,7 @@ import { BookingChargesController } from './booking-charges.controller';
     ]),
     NotificationModule,
     GuestModule,
-    AuthModule,
+    forwardRef(() => AuthModule),
     forwardRef(() => PaymentModule),
   ],
   controllers: [
