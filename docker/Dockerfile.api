@@ -5,15 +5,27 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 FROM base AS builder
 WORKDIR /app
+# 1. Tận dụng Docker Layer Caching với pnpm fetch
+COPY pnpm-lock.yaml ./
+RUN pnpm fetch
+
+# 2. Copy source code và install offline (rất nhanh vì đã fetch)
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN pnpm install -r --offline
+
+# 3. Build API
 RUN pnpm --filter @hotel/api build
+
+# 4. Dùng pnpm deploy để tách riêng API và production dependencies (Bỏ qua devDependencies)
+RUN pnpm --filter @hotel/api deploy --prod /app/out
 
 FROM base AS runner
 WORKDIR /app
-# Giữ lại toàn bộ code đã build để dễ dàng chạy các script như typeorm migration
-COPY --from=builder /app /app
-WORKDIR /app/apps/api
+# 5. Chỉ copy thư mục đã được deploy gọn nhẹ (chứa package.json và node_modules production)
+COPY --from=builder /app/out ./
+
+# 6. Copy thêm thư mục dist (vì pnpm deploy thường bỏ qua file build nếu có trong .gitignore)
+COPY --from=builder /app/apps/api/dist ./dist
 
 EXPOSE 3000
 CMD pnpm run migrate:run && pnpm run seed:run && node dist/main.js
