@@ -63,9 +63,7 @@ services:
       REDIS_HOST: redis
       DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
       # API sẽ được truy cập thông qua IP của server này (hoặc domain nếu có)
-      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
-    ports:
-      - "${API_PORT:-3000}:3000"
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://api.moon2301.space:3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,8 +87,6 @@ services:
       NODE_ENV: production
       # Internal URL để Nextjs gọi API ở server-side
       API_INTERNAL_URL: http://api:3000
-    ports:
-      - "${WEB_ADMIN_PORT:-3001}:3001"
     depends_on:
       - api
     networks:
@@ -107,8 +103,24 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    networks:
+      - hotel_prod_net
+
+  # ─────────────────────────────────────────
+  # Nginx Reverse Proxy
+  # ─────────────────────────────────────────
+  proxy:
+    image: nginx:alpine
+    container_name: hotel_nginx_proxy_prod
+    restart: unless-stopped
     ports:
-      - "${WEB_CLIENT_PORT:-8080}:80"
+      - "80:80"
+    volumes:
+      - ./docker/nginx-proxy/proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web-admin
+      - web-client
     networks:
       - hotel_prod_net
 
