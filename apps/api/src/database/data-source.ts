@@ -5,8 +5,9 @@ import { existsSync } from 'fs';
 
 /** API package root (apps/api) — TypeORM CLI should run with cwd = apps/api */
 const apiRoot = resolve(process.cwd());
-const here = join(apiRoot, 'src/database');
-
+const isJs = process.argv.some((arg) => arg.includes('dist/database'));
+const ext = isJs ? 'js' : 'ts';
+const here = join(apiRoot, isJs ? 'dist/database' : 'src/database');
 const envCandidates = [
   join(apiRoot, '.env'),
   join(apiRoot, '../../.env'),
@@ -18,8 +19,6 @@ for (const envPath of envCandidates) {
   }
 }
 
-const isJs = process.argv.some((arg) => arg.includes('dist/database'));
-const ext = isJs ? 'js' : 'ts';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',

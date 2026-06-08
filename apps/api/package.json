@@ -11,6 +11,8 @@
     "test:coverage": "jest --coverage",
     "migrate": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migrate:run": "typeorm migration:run -d dist/database/data-source.js",
+    "seed": "ts-node src/database/run-seed.ts",
+    "seed:run": "node dist/database/run-seed.js",
     "migrate:revert": "typeorm migration:revert -d dist/database/data-source.js",
     "migrate:generate": "typeorm migration:generate -d src/database/data-source.ts"
   },

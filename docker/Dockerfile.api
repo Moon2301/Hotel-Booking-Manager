@@ -16,4 +16,4 @@ COPY --from=builder /app /app
 WORKDIR /app/apps/api
 
 EXPOSE 3000
-CMD pnpm run migrate:run && node dist/main.js
+CMD pnpm run migrate:run && pnpm run seed:run && node dist/main.js

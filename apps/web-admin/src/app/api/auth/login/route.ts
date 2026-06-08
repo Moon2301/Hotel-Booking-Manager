@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, user });
   } catch (error) {
+    console.error('[NEXTJS AUTH] Login fetch error:', error);
     return NextResponse.json(
       { statusCode: 500, message: 'Internal server error' },
       { status: 500 }
