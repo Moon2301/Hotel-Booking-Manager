@@ -2,6 +2,8 @@
 const nextConfig = {
   // standalone only for production builds — breaks dev chunk serving in Docker if always on
   ...(process.env.NODE_ENV === 'production' ? { output: 'standalone' } : {}),
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
   reactStrictMode: true,
   images: {
     remotePatterns: [

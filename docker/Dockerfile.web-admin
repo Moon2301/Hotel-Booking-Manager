@@ -6,6 +6,7 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 FROM base AS builder
 WORKDIR /app
 COPY . .
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN pnpm install --frozen-lockfile
 # Build project web-admin (sử dụng standalone output đã được config trong next.config.mjs)
 RUN pnpm --filter @hotel/web-admin build
