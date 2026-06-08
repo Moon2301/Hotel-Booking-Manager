@@ -1,0 +1,121 @@
+version: "3.9"
+
+services:
+  # ─────────────────────────────────────────
+  # PostgreSQL 15
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: hotel_postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hotel_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hotel_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-hotel_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hotel_user} -d ${POSTGRES_DB:-hotel_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hotel_prod_net
+
+  # ─────────────────────────────────────────
+  # Redis 7
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: hotel_redis_prod
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hotel_prod_net
+
+  # ─────────────────────────────────────────
+  # Backend API (NestJS)
+  # ─────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: hotel_api_prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
+      # API sẽ được truy cập thông qua IP của server này (hoặc domain nếu có)
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hotel_prod_net
+
+  # ─────────────────────────────────────────
+  # Web Admin (Next.js)
+  # ─────────────────────────────────────────
+  web-admin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web-admin
+    container_name: hotel_web_admin_prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Internal URL để Nextjs gọi API ở server-side
+      API_INTERNAL_URL: http://api:3000
+    ports:
+      - "${WEB_ADMIN_PORT:-3001}:3001"
+    depends_on:
+      - api
+    networks:
+      - hotel_prod_net
+
+  # ─────────────────────────────────────────
+  # Web Client (Vite/React)
+  # ─────────────────────────────────────────
+  web-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web-client
+    container_name: hotel_web_client_prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${WEB_CLIENT_PORT:-8080}:80"
+    networks:
+      - hotel_prod_net
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:
+
+networks:
+  hotel_prod_net:
+    driver: bridge
