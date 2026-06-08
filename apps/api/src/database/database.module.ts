@@ -18,9 +18,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
         synchronize: false, // never synchronize in production — use migrations
         logging: config.get<string>('nodeEnv') === 'development',
-        ssl: config.get<string>('nodeEnv') === 'production'
-          ? { rejectUnauthorized: false }
-          : false,
+        ssl: false, // Tắt SSL vì chúng ta dùng Postgres chung mạng nội bộ Docker
       }),
     }),
   ],
