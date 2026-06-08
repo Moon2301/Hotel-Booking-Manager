@@ -10,7 +10,7 @@ import {
 import { GuestPortalEntry } from './components/guest/GuestPortalEntry';
 import { GuestServiceTab } from './components/guest/GuestServiceTab';
 import { ThemeToggle } from './components/ThemeToggle';
-import { pageBg, panelCard } from './lib/theme-classes';
+import { pageBg } from './lib/theme-classes';
 import { HomePage } from './pages/HomePage';
 import { BookPage } from './pages/BookPage';
 import { BookingConfirmationPage } from './pages/BookingConfirmationPage';
@@ -153,7 +153,8 @@ function MyStay() {
     if (session.guest) {
       setGuest((prev) => {
         if (
-          prev?.id === session.guest.id &&
+          prev &&
+          prev.id === session.guest.id &&
           prev.fullName === session.guest.fullName &&
           prev.email === session.guest.email &&
           prev.phone === session.guest.phone
