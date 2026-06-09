@@ -4,6 +4,7 @@ import { usePermissions } from './use-permissions';
 import { AuthProvider } from '@/providers/auth-provider';
 import { UserRole } from '@/types';
 import type { ReactNode } from 'react';
+import type { Permission } from '@/lib/rbac';
 
 describe('usePermissions', () => {
   it('returns can() that returns false when user is not authenticated', () => {
@@ -34,7 +35,7 @@ describe('usePermissions', () => {
 
     expect(result.current.can('properties:read')).toBe(true);
     expect(result.current.can('properties:write')).toBe(true);
-    expect(result.current.can('users:write')).toBe(true);
+    expect(result.current.can('users:write' as Permission)).toBe(true);
     expect(result.current.can('audit:read')).toBe(true);
   });
 
@@ -66,7 +67,7 @@ describe('usePermissions', () => {
     expect(result.current.can('properties:write')).toBe(false);
     expect(result.current.can('rooms:write')).toBe(false);
     expect(result.current.can('rates:read')).toBe(false);
-    expect(result.current.can('users:read')).toBe(false);
+    expect(result.current.can('users:read' as Permission)).toBe(false);
     expect(result.current.can('audit:read')).toBe(false);
   });
 

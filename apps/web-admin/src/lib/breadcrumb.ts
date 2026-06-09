@@ -20,7 +20,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   guests: 'Guests',
   'room-types': 'Room Types',
   rooms: 'Rooms',
-  rates: 'Rates',
   policies: 'Policies',
 };
 

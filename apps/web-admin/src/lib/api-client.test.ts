@@ -135,11 +135,11 @@ describe('api-client', () => {
   });
 
   describe('typed request helpers', () => {
-    let mockGet: ReturnType<typeof vi.spyOn>;
-    let mockPost: ReturnType<typeof vi.spyOn>;
-    let mockPut: ReturnType<typeof vi.spyOn>;
-    let mockPatch: ReturnType<typeof vi.spyOn>;
-    let mockDelete: ReturnType<typeof vi.spyOn>;
+    let mockGet: any;
+    let mockPost: any;
+    let mockPut: any;
+    let mockPatch: any;
+    let mockDelete: any;
 
     beforeEach(() => {
       mockGet = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { id: '1' } });
