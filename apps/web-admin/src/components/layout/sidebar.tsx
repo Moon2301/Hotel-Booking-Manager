@@ -9,9 +9,9 @@ import {
   CalendarCheck,
   CreditCard,
   Star,
+  Star as StarIcon, // Keep it aligned
   MessageSquare,
   BarChart3,
-  ScrollText,
   PanelLeftClose,
   PanelLeft,
   Receipt,
@@ -48,7 +48,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Reviews', href: '/reviews', icon: Star, permission: 'reviews:read' },
   { label: 'Chat', href: '/chat', icon: MessageSquare, permission: 'chat:read' },
   { label: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports:read' },
-  { label: 'Audit Log', href: '/audit-log', icon: ScrollText, permission: 'audit:read' },
 ];
 
 interface SidebarProps {
