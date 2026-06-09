@@ -9,9 +9,9 @@ WORKDIR /app
 COPY pnpm-lock.yaml ./
 RUN pnpm fetch
 
-# 2. Copy source code và install offline (rất nhanh vì đã fetch)
+# 2. Copy source code và install (sẽ siêu nhanh vì đã được fetch sẵn trong virtual store)
 COPY . .
-RUN pnpm install -r --offline
+RUN pnpm install --frozen-lockfile
 
 # 3. Build API
 RUN pnpm --filter @hotel/api build
