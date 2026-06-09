@@ -2,7 +2,6 @@
 
 import dynamic from 'next/dynamic';
 import { QueryProvider } from './query-provider';
-import { SocketProvider } from '@/contexts/socket-context';
 
 const Toaster = dynamic(
   () => import('@/components/ui/toaster').then((mod) => mod.Toaster),
@@ -12,10 +11,8 @@ const Toaster = dynamic(
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryProvider>
-      <SocketProvider>
-        {children}
-        <Toaster />
-      </SocketProvider>
+      {children}
+      <Toaster />
     </QueryProvider>
   );
 }

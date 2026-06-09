@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ImageUpload } from '@/components/image-upload';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 export default function PropertyOverviewPage({ params }: { params: { id: string } }) {
   const { data: property, isLoading } = useProperty(params.id);
