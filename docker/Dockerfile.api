@@ -5,13 +5,17 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 FROM base AS builder
 WORKDIR /app
-# 1. Tận dụng Docker Layer Caching với pnpm fetch
-COPY pnpm-lock.yaml ./
-RUN pnpm fetch
+# 1. Tận dụng Docker Layer Caching bằng cách copy trước các file cấu hình
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web-admin/package.json ./apps/web-admin/package.json
+COPY apps/web-client/package.json ./apps/web-client/package.json
 
-# 2. Copy source code và install (sẽ siêu nhanh vì đã được fetch sẵn trong virtual store)
-COPY . .
+# 2. Cài đặt dependencies (sẽ được cache trừ khi các file package.json thay đổi)
 RUN pnpm install --frozen-lockfile
+
+# 3. Copy toàn bộ source code
+COPY . .
 
 # 3. Build API
 RUN pnpm --filter @hotel/api build

@@ -5,13 +5,16 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 FROM base AS builder
 WORKDIR /app
-COPY pnpm-lock.yaml ./
-RUN pnpm fetch
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web-admin/package.json ./apps/web-admin/package.json
+COPY apps/web-client/package.json ./apps/web-client/package.json
+
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV API_INTERNAL_URL="http://api:3000"
-RUN pnpm install --frozen-lockfile
 # Build project web-admin (sử dụng standalone output đã được config trong next.config.mjs)
 RUN pnpm --filter @hotel/web-admin build
 
