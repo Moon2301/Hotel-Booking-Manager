@@ -89,7 +89,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       # Internal URL để Nextjs gọi API ở server-side
-      API_INTERNAL_URL: http://api:3000
+      API_INTERNAL_URL: http://hotel_api_prod:3000
     depends_on:
       - api
     networks:
