@@ -13,13 +13,11 @@ export function GuestChatWidget({ propertyId }: { propertyId: string }) {
     if (!isOpen) return;
     
     // Connect to ChatGateway using a temporary guest token or session ID
-    // Note: In real implementation, you might need to call an API to get a temporary guest token first.
     const socketUrl = import.meta.env.VITE_API_URL || '';
     
     const newSocket = io(`${socketUrl}/chat`, {
       transports: ['websocket'],
       path: '/socket.io/',
-      // auth: { token: guestToken }
     });
 
     newSocket.on('connect', () => {
@@ -59,31 +57,51 @@ export function GuestChatWidget({ propertyId }: { propertyId: string }) {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-6 left-6 z-50">
       {/* Chat Window */}
       {isOpen && (
-        <div className="mb-4 w-80 h-96 bg-background border rounded-2xl shadow-xl flex flex-col overflow-hidden transition-all animate-in slide-in-from-bottom-5">
-          <div className="bg-primary p-4 text-primary-foreground flex justify-between items-center">
-            <div className="font-semibold flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Chat với Lễ tân
+        <div className="mb-4 w-80 sm:w-96 h-[480px] bg-white dark:bg-mango-navy-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all animate-in slide-in-from-bottom-5">
+          {/* Header */}
+          <div className="bg-mango-navy-900 dark:bg-mango-navy-950 p-4 text-white flex justify-between items-center border-b border-white/5">
+            <div className="flex items-center gap-2.5 text-left">
+              <div className="relative">
+                <MessageCircle className="h-5 w-5 text-mango-accent" />
+                <span className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'} border border-mango-navy-900`} />
+              </div>
+              <div>
+                <div className="font-bold text-sm tracking-wide">Hỗ trợ trực tuyến</div>
+                <div className="text-[10px] text-white/60">
+                  {isConnected ? 'Lễ tân đang trực tuyến' : 'Đang kết nối...'}
+                </div>
+              </div>
             </div>
-            <button type="button" className="h-6 w-6 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground rounded flex items-center justify-center" onClick={() => setIsOpen(false)}>
+            <button 
+              type="button" 
+              className="h-7 w-7 text-white/70 hover:bg-white/10 hover:text-white rounded-full flex items-center justify-center transition-colors" 
+              onClick={() => setIsOpen(false)}
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-mango-navy-950/40">
             {messages.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground mt-4">
-                Xin chào! Chúng tôi có thể giúp gì cho bạn?
+              <div className="flex flex-col items-center justify-center h-full text-center text-xs text-slate-500 dark:text-white/40 px-4">
+                <MessageCircle className="h-8 w-8 text-slate-300 dark:text-white/20 mb-2" />
+                <p className="font-semibold text-slate-700 dark:text-white/70">Bắt đầu cuộc trò chuyện</p>
+                <p className="mt-1">Xin chào! Lễ tân Mango Hotel luôn sẵn sàng hỗ trợ bạn. Vui lòng gửi tin nhắn để bắt đầu.</p>
               </div>
             ) : (
               messages.map((msg, idx) => {
                 const isGuest = msg.senderRole === 'GUEST';
                 return (
                   <div key={idx} className={`flex ${isGuest ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`px-3 py-2 rounded-2xl max-w-[85%] text-sm ${isGuest ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-muted rounded-bl-sm'}`}>
+                    <div className={`px-3.5 py-2 rounded-2xl max-w-[85%] text-sm shadow-sm ${
+                      isGuest 
+                        ? 'bg-mango-accent text-mango-navy-950 font-semibold rounded-tr-sm' 
+                        : 'bg-white dark:bg-mango-navy-800 text-slate-800 dark:text-white border border-slate-100 dark:border-white/5 rounded-tl-sm'
+                    }`}>
                       {msg.content}
                     </div>
                   </div>
@@ -92,15 +110,20 @@ export function GuestChatWidget({ propertyId }: { propertyId: string }) {
             )}
           </div>
 
-          <form onSubmit={sendMessage} className="p-3 border-t flex gap-2 bg-background">
+          {/* Form */}
+          <form onSubmit={sendMessage} className="p-3 border-t border-slate-200 dark:border-white/10 flex gap-2 bg-white dark:bg-mango-navy-900">
             <input 
-              placeholder="Nhập tin nhắn..." 
+              placeholder={isConnected ? "Nhập tin nhắn..." : "Đang kết nối..."} 
               value={inputText}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInputText(e.target.value)}
-              className="rounded-full flex-1 px-3 py-2 border text-sm outline-none focus:ring-2 focus:ring-primary"
+              className="rounded-full flex-1 px-4 py-2 bg-slate-100 dark:bg-mango-navy-950 text-slate-850 dark:text-white border border-slate-200 dark:border-white/10 text-sm outline-none focus:ring-2 focus:ring-mango-accent placeholder:text-slate-400 dark:placeholder:text-white/30"
               disabled={!isConnected}
             />
-            <button type="submit" className="rounded-full shrink-0 h-9 w-9 bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-50" disabled={!isConnected || !inputText.trim()}>
+            <button 
+              type="submit" 
+              className="rounded-full shrink-0 h-9 w-9 bg-mango-accent text-mango-navy-950 flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50" 
+              disabled={!isConnected || !inputText.trim()}
+            >
               <Send className="h-4 w-4" />
             </button>
           </form>
@@ -109,7 +132,7 @@ export function GuestChatWidget({ propertyId }: { propertyId: string }) {
 
       {/* Floating Button */}
       <button 
-        className={`h-14 w-14 rounded-full shadow-xl transition-transform hover:scale-105 bg-primary text-primary-foreground flex items-center justify-center ${isOpen ? 'rotate-90 scale-0 opacity-0 hidden' : 'rotate-0 opacity-100'}`}
+        className={`h-14 w-14 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 bg-mango-accent text-mango-navy-950 flex items-center justify-center ${isOpen ? 'scale-0 opacity-0 hidden' : 'scale-100 opacity-100'}`}
         onClick={() => setIsOpen(true)}
       >
         <MessageCircle className="h-7 w-7" />
