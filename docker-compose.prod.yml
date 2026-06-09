@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ─────────────────────────────────────────
   # PostgreSQL 15
@@ -58,12 +56,12 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # Ghi đè các biến host để trỏ đúng vào service name trong Docker network
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
       DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
-      # API sẽ được truy cập thông qua IP của server này (hoặc domain nếu có)
-      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://api.moon2301.space:3000}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://api.moon2301.space}
     volumes:
       - hotel_uploads_prod:/app/uploads
     depends_on:
@@ -88,15 +86,16 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      # Internal URL để Nextjs gọi API ở server-side
-      API_INTERNAL_URL: http://hotel_api_prod:3000
+      HOSTNAME: "0.0.0.0"
+      # QUAN TRỌNG: Ghi đè API_INTERNAL_URL từ .env (localhost) sang service name Docker
+      API_INTERNAL_URL: http://api:3000
     depends_on:
       - api
     networks:
       - hotel_prod_net
 
   # ─────────────────────────────────────────
-  # Web Client (Vite/React)
+  # Web Client (Vite/React → Nginx static)
   # ─────────────────────────────────────────
   web-client:
     build:
@@ -104,8 +103,6 @@ services:
       dockerfile: docker/Dockerfile.web-client
     container_name: hotel_web_client_prod
     restart: unless-stopped
-    env_file:
-      - .env
     networks:
       - hotel_prod_net
 
