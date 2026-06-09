@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV API_INTERNAL_URL="http://api:3000"
+RUN rm -f .env* apps/web-admin/.env*
 # Build project web-admin (sử dụng standalone output đã được config trong next.config.mjs)
 RUN pnpm --filter @hotel/web-admin build
 
