@@ -15,6 +15,7 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { GuestModule } from './modules/guest/guest.module';
 import { ChannelModule } from './modules/channel/channel.module';
+import { UploadModule } from './modules/upload/upload.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -61,6 +62,7 @@ import appConfig from './config/app.config';
     NotificationModule,
     ChatModule,
     ChannelModule,
+    UploadModule,
   ],
 })
 export class AppModule {}

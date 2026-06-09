@@ -19,6 +19,7 @@ import {
   Tags,
   BadgeDollarSign,
   Handshake,
+  Inbox,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -43,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Payments', href: '/payments', icon: CreditCard, permission: 'payments:read' },
   { label: 'Guests', href: '/guests', icon: UserSquare2, permission: 'guests:read' },
   { label: 'Đối tác', href: '/partners', icon: Handshake, permission: 'partners:read' },
+  { label: 'Inbox', href: '/inbox', icon: Inbox, permission: 'chat:read' },
   { label: 'Reviews', href: '/reviews', icon: Star, permission: 'reviews:read' },
   { label: 'Chat', href: '/chat', icon: MessageSquare, permission: 'chat:read' },
   { label: 'Reports', href: '/reports', icon: BarChart3, permission: 'reports:read' },

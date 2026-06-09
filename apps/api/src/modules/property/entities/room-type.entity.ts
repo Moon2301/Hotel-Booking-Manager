@@ -15,6 +15,7 @@ export class RoomType {
   @Column({ type: 'numeric', precision: 12, scale: 2, name: 'base_price', default: 0 }) basePrice: number;
   @Column({ name: 'max_occupancy', default: 2 }) maxOccupancy: number;
   @Column({ type: 'jsonb', default: [] }) amenities: string[];
+  @Column({ type: 'jsonb', nullable: true, default: [] }) images: string[];
   @Column({ nullable: true }) description: string;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt: Date;

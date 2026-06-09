@@ -64,6 +64,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hotel_user}:${POSTGRES_PASSWORD:-hotel_secret}@postgres:5432/${POSTGRES_DB:-hotel_db}
       # API sẽ được truy cập thông qua IP của server này (hoặc domain nếu có)
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://api.moon2301.space:3000}
+    volumes:
+      - hotel_uploads_prod:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,6 +130,7 @@ services:
 volumes:
   postgres_data_prod:
   redis_data_prod:
+  hotel_uploads_prod:
 
 networks:
   hotel_prod_net:

@@ -5,12 +5,12 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 FROM base AS builder
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web-admin/package.json ./apps/web-admin/package.json
 COPY apps/web-client/package.json ./apps/web-client/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=2048"

@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ImageUpload } from '@/components/image-upload';
 import { useCreateRoomType } from '@/hooks/use-room-types';
 import {
   roomTypeSchema,
@@ -51,6 +52,7 @@ export function RoomTypeCreateDialog({
       basePrice: 0,
       maxOccupancy: 2,
       amenities: [],
+      images: [],
       description: '',
     },
   });
@@ -146,6 +148,14 @@ export function RoomTypeCreateDialog({
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Images</Label>
+            <ImageUpload
+              value={watch('images')}
+              onChange={(images) => setValue('images', images)}
+            />
           </div>
 
           <div className="space-y-2">

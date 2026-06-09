@@ -9,6 +9,7 @@ export const roomTypeSchema = z.object({
   basePrice: z.coerce.number().min(0, 'Base price must be 0 or greater'),
   maxOccupancy: z.coerce.number().int().min(1, 'Max occupancy must be at least 1').default(2),
   amenities: z.array(z.string()).default([]),
+  images: z.array(z.string()).default([]),
   description: z.string().optional(),
 });
 

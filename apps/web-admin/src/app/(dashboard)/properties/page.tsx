@@ -1,7 +1,8 @@
 'use client';
 
 import { type ColumnDef } from '@tanstack/react-table';
-import { Plus } from 'lucide-react';
+import { Plus, Settings } from 'lucide-react';
+import Link from 'next/link';
 
 import { DataTable } from '@/components/data-table/data-table';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,18 @@ const columns: ColumnDef<Property, unknown>[] = [
         row.original.ianaTimezone,
         'dd/MM/yyyy'
       ),
+  },
+  {
+    id: 'actions',
+    header: '',
+    cell: ({ row }) => (
+      <Button variant="outline" size="sm" asChild>
+        <Link href={`/properties/${row.original.id}`}>
+          <Settings className="mr-2 h-4 w-4" />
+          Quản lý
+        </Link>
+      </Button>
+    ),
   },
 ];
 

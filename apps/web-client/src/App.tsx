@@ -18,6 +18,7 @@ import { RoomsPage } from './pages/RoomsPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { PartnerReferralCapture } from './components/PartnerReferralCapture';
 import { BookingQrCard } from './components/booking/BookingQrCard';
+import { GuestChatWidget } from './components/chat/guest-chat-widget';
 import {
   Calendar,
   CreditCard,
@@ -772,6 +773,7 @@ export default function App() {
           }
         />
       </Routes>
+      <GuestChatWidget propertyId="" />
     </BrowserRouter>
   );
 }

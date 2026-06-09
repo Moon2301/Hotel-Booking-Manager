@@ -36,6 +36,8 @@ export interface Property {
   address: string | null;
   phone: string | null;
   email: string | null;
+  description: string | null;
+  images: string[];
   holdTtlSeconds: number;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +52,7 @@ export interface RoomType {
   basePrice: number;
   maxOccupancy: number;
   amenities: string[];
+  images: string[];
   description: string | null;
   createdAt: string;
   updatedAt: string;
