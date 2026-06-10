@@ -17,6 +17,7 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
+          command_timeout: 30m
           script: |
             cd ~/Hotel-Booking-Manager
             git pull origin main
